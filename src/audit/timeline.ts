@@ -1,7 +1,7 @@
 /**
  * @file timeline.ts
  * @description Visual ASCII timeline generator for terminal audit review
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

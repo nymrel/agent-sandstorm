@@ -245,7 +245,7 @@ Measured on standard NVMe developer workstations across a 5,000 file workspace (
     "parentOrganization": {
       "@type": "Organization",
       "name": "JalenBuilds LLC",
-      "email": "contact@jalenbuilds.com"
+      "email": "contact@nymrel.com"
     }
   }
 }

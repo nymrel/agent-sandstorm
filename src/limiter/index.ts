@@ -1,7 +1,7 @@
 /**
  * @file index.ts
  * @description Real-time spend caps, token rate limiting & recursive loop brake
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

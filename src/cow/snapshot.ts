@@ -1,7 +1,7 @@
 /**
  * @file snapshot.ts
  * @description Copy-on-Write workspace snapshotter & content-addressed object store
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

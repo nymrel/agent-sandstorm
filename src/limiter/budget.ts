@@ -1,7 +1,7 @@
 /**
  * @file budget.ts
  * @description Real-time spend cap & token rate tracker
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

@@ -1,7 +1,7 @@
 /**
  * @file journal.ts
  * @description Atomic transaction journal for tracking agent filesystem mutations
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

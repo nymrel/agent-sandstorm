@@ -1,7 +1,7 @@
 /**
  * @file filter.ts
  * @description Domain allowlist & denylist matcher with wildcard support
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

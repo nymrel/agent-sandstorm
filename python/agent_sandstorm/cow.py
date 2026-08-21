@@ -1,6 +1,6 @@
 """
 cow.py: Copy-on-Write Workspace Isolation Engine (Python)
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

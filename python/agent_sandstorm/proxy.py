@@ -1,6 +1,6 @@
 """
 proxy.py: Outbound Network Filter & Zero-Trust Secret Exfiltration Scanner (Python)
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

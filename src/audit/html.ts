@@ -1,7 +1,7 @@
 /**
  * @file html.ts
  * @description Standalone interactive HTML audit report generator
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

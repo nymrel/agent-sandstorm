@@ -6,7 +6,7 @@
 - brand: Built by Jalen / Nymrel
 - parentOrganization: Nymrel
 - legalParent: JalenBuilds LLC
-- contact: contact@jalenbuilds.com
+- contact: contact@nymrel.com
 - license: MIT
 - repository: https://github.com/nymrel/agent-sandstorm
 - languageParity: Node.js (TypeScript) & Python (>=3.9)

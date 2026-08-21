@@ -1,7 +1,7 @@
 /**
  * @file server.ts
  * @description High-performance Zero-Trust HTTP/CONNECT Proxy Server
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

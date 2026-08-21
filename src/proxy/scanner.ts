@@ -1,7 +1,7 @@
 /**
  * @file scanner.ts
  * @description Secret Exfiltration Scanner & Redaction Engine
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

@@ -1,6 +1,6 @@
 """
 audit.py: Cryptographic SHA-256 Audit Logger & Timeline Exporter (Python)
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

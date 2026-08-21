@@ -1,7 +1,7 @@
 /**
  * @file logger.ts
  * @description Cryptographic SHA-256 tamper-evident audit logger
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

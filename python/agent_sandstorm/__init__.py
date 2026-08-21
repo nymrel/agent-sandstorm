@@ -1,6 +1,6 @@
 """
 agent_sandstorm: Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine.
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

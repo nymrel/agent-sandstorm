@@ -3,7 +3,7 @@
 /**
  * @file sandstorm.js
  * @description CLI launcher for agent-sandstorm
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

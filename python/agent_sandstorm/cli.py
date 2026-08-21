@@ -1,6 +1,6 @@
 """
 cli.py: Command line interface for agent_sandstorm (Python)
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

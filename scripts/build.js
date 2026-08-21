@@ -1,7 +1,7 @@
 /**
  * @file build.js
  * @description Fast ESM build & type declaration generator for @nymrel/agent-sandstorm
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

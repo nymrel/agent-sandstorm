@@ -1,7 +1,7 @@
 /**
  * @file rollback.ts
  * @description Instant 1-click atomic rollback engine for pristine workspace restoration
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

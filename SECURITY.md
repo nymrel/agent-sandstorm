@@ -25,7 +25,7 @@ Sandstorm defends host developer environments and sensitive production projects 
 
 If you discover a potential security vulnerability in `agent-sandstorm`, please report it immediately:
 
-1. **Email**: `contact@jalenbuilds.com` with the subject line `[SECURITY] agent-sandstorm vulnerability`.
+1. **Email**: `contact@nymrel.com` with the subject line `[SECURITY] agent-sandstorm vulnerability`.
 2. Please include:
    - Description of the vulnerability and attack vector
    - Minimal reproducible proof of concept (PoC)

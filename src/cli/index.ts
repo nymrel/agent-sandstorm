@@ -1,7 +1,7 @@
 /**
  * @file index.ts
  * @description CLI implementation for agent-sandstorm
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

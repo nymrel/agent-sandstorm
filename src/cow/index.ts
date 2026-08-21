@@ -1,7 +1,7 @@
 /**
  * @file index.ts
  * @description Copy-on-Write Workspace Isolation Engine
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

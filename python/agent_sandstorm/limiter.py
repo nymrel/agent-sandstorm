@@ -1,6 +1,6 @@
 """
 limiter.py: Spend Budget Limiter & Runaway Loop Circuit Breaker (Python)
-Copyright 2026 Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 

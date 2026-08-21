@@ -1,7 +1,7 @@
 /**
  * @file sandbox.ts
  * @description Master Zero-Trust Agent Execution Sandbox Orchestrator
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

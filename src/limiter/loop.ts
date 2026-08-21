@@ -1,7 +1,7 @@
 /**
  * @file loop.ts
  * @description Real-time recursive loop brake & cycle detector for runaway agents
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
