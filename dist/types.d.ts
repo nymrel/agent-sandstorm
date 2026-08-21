@@ -1,7 +1,7 @@
 /**
- * @file types.d.ts
+ * @file types.ts
  * @description Core types and interfaces for @nymrel/agent-sandstorm
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

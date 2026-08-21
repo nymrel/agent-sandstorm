@@ -1,38 +1,84 @@
-export * from '../types.js';
-import type { LimiterConfig, ModelPricing } from '../types.js';
+/**
+ * @file index.ts
+ * @description Real-time spend caps, token rate limiting & recursive loop brake
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
+ * @license MIT
+ */
 
-export declare class BudgetExceededError extends Error {
-  readonly currentSpendUsd: number;
-  readonly maxSpendUsd: number;
-  readonly totalTokens: number;
-  constructor(message: string, currentSpendUsd: number, maxSpendUsd: number, totalTokens: number);
+import type { LimiterConfig } from '../types.js';
+import { BudgetTracker, BudgetExceededError, DEFAULT_MODEL_PRICING } from './budget.js';
+import { LoopDetector, RunawayLoopError, StepLimitExceededError } from './loop.js';
+
+export class ExecutionLimiter {
+  public readonly budget: BudgetTracker;
+  public readonly loopDetector: LoopDetector;
+  private readonly maxDurationMs: number;
+  private startTime: number;
+
+  constructor(config: LimiterConfig = {}) {
+    this.budget = new BudgetTracker({
+      maxSpendUsd: config.maxSpendUsd,
+      maxTotalTokens: config.maxTotalTokens,
+      customPricing: config.customPricing,
+    });
+
+    this.loopDetector = new LoopDetector({
+      maxSteps: config.maxSteps,
+      loopThreshold: config.loopThreshold ?? 3,
+      windowSize: config.windowSize ?? 20,
+    });
+
+    this.maxDurationMs = config.maxDurationMs ?? Infinity;
+    this.startTime = Date.now();
+  }
+
+  /**
+   * Start or restart time limit tracking
+   */
+  public start(): void {
+    this.startTime = Date.now();
+  }
+
+  /**
+   * Check if duration limit has been exceeded
+   */
+  public checkTimeout(): void {
+    const elapsed = Date.now() - this.startTime;
+    if (elapsed > this.maxDurationMs) {
+      throw new Error(`Sandstorm Execution Timeout: Duration ${elapsed}ms exceeded maximum allowed ${this.maxDurationMs}ms.`);
+    }
+  }
+
+  /**
+   * Record step / action and check for loops & timeouts
+   */
+  public recordStep(actionName: string, detail?: string): void {
+    this.checkTimeout();
+    this.loopDetector.recordAction(actionName, detail);
+  }
+
+  /**
+   * Record token usage and check budget
+   */
+  public recordTokens(model: string, promptTokens: number, completionTokens: number) {
+    this.checkTimeout();
+    return this.budget.recordUsage(model, promptTokens, completionTokens);
+  }
+
+  public getSummary() {
+    return {
+      elapsedMs: Date.now() - this.startTime,
+      ...this.budget.getSummary(),
+      stepsExecuted: this.loopDetector.getStepsCount(),
+    };
+  }
+
+  public reset(): void {
+    this.budget.reset();
+    this.loopDetector.reset();
+    this.startTime = Date.now();
+  }
 }
 
-export declare class RunawayLoopError extends Error {
-  readonly pattern: string;
-  readonly repetitions: number;
-  readonly totalSteps: number;
-  constructor(message: string, pattern: string, repetitions: number, totalSteps: number);
-}
-
-export declare class BudgetTracker {
-  constructor(options?: { maxSpendUsd?: number; maxTotalTokens?: number; customPricing?: Record<string, ModelPricing> });
-  recordUsage(model: string, promptTokens: number, completionTokens: number): { currentSpendUsd: number; totalTokens: number; exceeded: boolean };
-  getSummary(): Record<string, unknown>;
-  reset(): void;
-}
-
-export declare class LoopDetector {
-  constructor(options?: { maxSteps?: number; loopThreshold?: number; windowSize?: number });
-  recordAction(actionIdentifier: string, detail?: string): void;
-  reset(): void;
-}
-
-export declare class ExecutionLimiter {
-  constructor(config?: LimiterConfig);
-  start(): void;
-  recordStep(actionName: string, detail?: string): void;
-  recordTokens(model: string, promptTokens: number, completionTokens: number): { currentSpendUsd: number; totalTokens: number; exceeded: boolean };
-  getSummary(): Record<string, unknown>;
-  reset(): void;
-}
+export * from './budget.js';
+export * from './loop.js';

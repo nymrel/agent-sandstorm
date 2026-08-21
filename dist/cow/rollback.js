@@ -1,21 +1,24 @@
 /**
- * @file rollback.js
+ * @file rollback.ts
  * @description Instant 1-click atomic rollback engine for pristine workspace restoration
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { scanWorkspaceFiles } from './snapshot.js';
+import *'node:fs';
+import *'node:path';
 
-export function computeWorkspaceDiff(workspaceRoot, baseSnapshot) {
+import { scanWorkspaceFiles, ObjectStore, computeTreeHash } from './snapshot.js';
+
+export function computeWorkspaceDiff(
+  workspaceRoot,
+  baseSnapshot) {
   const currentFiles = scanWorkspaceFiles(workspaceRoot);
   const baseFiles = baseSnapshot.files;
 
-  const added = [];
-  const modified = [];
-  const deleted = [];
+  const added= [];
+  const modified= [];
+  const deleted= [];
   let unchangedCount = 0;
 
   for (const [relPath, curFile] of Object.entries(currentFiles)) {
@@ -36,20 +39,23 @@ export function computeWorkspaceDiff(workspaceRoot, baseSnapshot) {
   }
 
   return {
-    baseSnapshotId: baseSnapshot.id,
+    baseSnapshotId,
     added,
     modified,
     deleted,
     unchangedCount,
-    totalChanged: added.length + modified.length + deleted.length,
+    totalChanged,
   };
 }
 
-export function executeRollback(workspaceRoot, baseSnapshot, objectStore) {
+export function executeRollback(
+  workspaceRoot,
+  baseSnapshot,
+  objectStore) {
   const startTime = Date.now();
-  const restoredFiles = [];
-  const deletedFiles = [];
-  const revertedFiles = [];
+  const restoredFiles= [];
+  const deletedFiles= [];
+  const revertedFiles= [];
 
   try {
     const currentFiles = scanWorkspaceFiles(workspaceRoot);
@@ -77,14 +83,14 @@ export function executeRollback(workspaceRoot, baseSnapshot, objectStore) {
       if (!curFile) {
         // File was deleted; restore it
         const targetDir = path.dirname(targetPath);
-        fs.mkdirSync(targetDir, { recursive: true });
+        fs.mkdirSync(targetDir, { recursive);
         const content = objectStore.getBuffer(baseFile.sha256);
-        fs.writeFileSync(targetPath, content, { mode: baseFile.mode });
+        fs.writeFileSync(targetPath, content, { mode);
         restoredFiles.push(relPath);
       } else if (curFile.sha256 !== baseFile.sha256) {
         // File was modified; revert it
         const content = objectStore.getBuffer(baseFile.sha256);
-        fs.writeFileSync(targetPath, content, { mode: baseFile.mode });
+        fs.writeFileSync(targetPath, content, { mode);
         revertedFiles.push(relPath);
       }
     }
@@ -94,8 +100,8 @@ export function executeRollback(workspaceRoot, baseSnapshot, objectStore) {
 
     const durationMs = Date.now() - startTime;
     return {
-      success: true,
-      snapshotId: baseSnapshot.id,
+      success,
+      snapshotId,
       restoredFiles,
       deletedFiles,
       revertedFiles,
@@ -104,8 +110,8 @@ export function executeRollback(workspaceRoot, baseSnapshot, objectStore) {
   } catch (err) {
     const durationMs = Date.now() - startTime;
     return {
-      success: false,
-      snapshotId: baseSnapshot.id,
+      success,
+      snapshotId,
       restoredFiles,
       deletedFiles,
       revertedFiles,
@@ -119,7 +125,7 @@ function cleanupEmptyDirectories(dir, isRoot = true) {
   if (!fs.existsSync(dir)) return true;
 
   let isEmpty = true;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = fs.readdirSync(dir, { withFileTypes);
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);

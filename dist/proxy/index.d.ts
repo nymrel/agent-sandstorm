@@ -1,21 +1,10 @@
-export * from '../types.js';
-import type { ProxyConfig, SecretDetection, SecretPattern } from '../types.js';
+/**
+ * @file index.ts
+ * @description Outbound network filter & domain allowlist proxy
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
+ * @license MIT
+ */
 
-export declare class SecretScanner {
-  constructor(customPatterns?: SecretPattern[]);
-  scan(text: string, location?: 'url' | 'header' | 'body'): SecretDetection[];
-  redactAll(text: string): string;
-}
-
-export declare class DomainFilter {
-  constructor(allowedDomains?: string[], blockedDomains?: string[]);
-  isAllowed(hostHeader: string): boolean;
-}
-
-export declare class ZeroTrustProxy {
-  constructor(config: ProxyConfig);
-  start(requestedPort?: number, host?: string): Promise<{ port: number; host: string }>;
-  getEnv(): Record<string, string>;
-  getPort(): number;
-  stop(): Promise<void>;
-}
+export * from './scanner.js';
+export * from './filter.js';
+export * from './server.js';

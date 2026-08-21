@@ -1,12 +1,13 @@
 /**
- * @file index.js
+ * @file index.ts
  * @description Copy-on-Write Workspace Isolation Engine
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import *'node:fs';
+import *'node:path';
+
 import {
   scanWorkspaceFiles,
   computeTreeHash,
@@ -16,6 +17,8 @@ import { JournalTracker } from './journal.js';
 import { executeRollback, computeWorkspaceDiff } from './rollback.js';
 
 export class CoWSnapshotManager {
+  workspaceRoot= null;
+
   constructor(workspaceRoot, sandstormDir) {
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.sandstormDir = sandstormDir
@@ -23,13 +26,15 @@ export class CoWSnapshotManager {
       : path.join(this.workspaceRoot, '.sandstorm');
     this.snapshotsDir = path.join(this.sandstormDir, 'snapshots');
 
-    fs.mkdirSync(this.snapshotsDir, { recursive: true });
+    fs.mkdirSync(this.snapshotsDir, { recursive);
     this.objectStore = new ObjectStore(this.sandstormDir);
     this.journalTracker = new JournalTracker(this.sandstormDir);
-    this.latestSnapshot = null;
   }
 
-  createSnapshot(name, metadata) {
+  /**
+   * Create a new immutable snapshot of the workspace
+   */
+  createSnapshot(name, metadata, unknown>) {
     const timestamp = Date.now();
     const id = `snap_${timestamp}_${Math.random().toString(36).substring(2, 8)}`;
     const files = scanWorkspaceFiles(this.workspaceRoot);
@@ -41,13 +46,13 @@ export class CoWSnapshotManager {
     }
 
     const treeHash = computeTreeHash(files);
-    const snapshot = {
+    const snapshot= {
       id,
       name: name || `Snapshot ${new Date(timestamp).toISOString()}`,
       timestamp,
-      isoTime: new Date(timestamp).toISOString(),
-      workspacePath: this.workspaceRoot,
-      fileCount: Object.keys(files).length,
+      isoTime).toISOString(),
+      workspacePath,
+      fileCount).length,
       totalSizeBytes,
       treeHash,
       files,
@@ -57,6 +62,7 @@ export class CoWSnapshotManager {
     const snapshotPath = path.join(this.snapshotsDir, `${id}.json`);
     fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf-8');
 
+    // Also update current pointer
     const currentPath = path.join(this.snapshotsDir, 'current.json');
     fs.writeFileSync(currentPath, JSON.stringify({ id, treeHash, timestamp }, null, 2), 'utf-8');
 
@@ -64,7 +70,10 @@ export class CoWSnapshotManager {
     return snapshot;
   }
 
-  getSnapshot(id) {
+  /**
+   * Get a snapshot by ID or latest
+   */
+  getSnapshot(id): SnapshotMetadata | null {
     if (!id) {
       if (this.latestSnapshot) return this.latestSnapshot;
       const currentPath = path.join(this.snapshotsDir, 'current.json');
@@ -91,10 +100,13 @@ export class CoWSnapshotManager {
     }
   }
 
+  /**
+   * List all stored snapshots
+   */
   listSnapshots() {
     if (!fs.existsSync(this.snapshotsDir)) return [];
     const files = fs.readdirSync(this.snapshotsDir);
-    const snapshots = [];
+    const snapshots= [];
 
     for (const file of files) {
       if (file.startsWith('snap_') && file.endsWith('.json')) {
@@ -110,11 +122,17 @@ export class CoWSnapshotManager {
     return snapshots.sort((a, b) => b.timestamp - a.timestamp);
   }
 
+  /**
+   * Start an atomic transaction for agent writes
+   */
   startTransaction(name = 'agent-session') {
     const baseSnapshot = this.getSnapshot() || this.createSnapshot('baseline');
     return this.journalTracker.startTransaction(name, baseSnapshot.id);
   }
 
+  /**
+   * Compute diff between current workspace and base snapshot
+   */
   diff(snapshotId) {
     const baseSnapshot = this.getSnapshot(snapshotId);
     if (!baseSnapshot) {
@@ -123,16 +141,19 @@ export class CoWSnapshotManager {
     return computeWorkspaceDiff(this.workspaceRoot, baseSnapshot);
   }
 
+  /**
+   * Instant 1-click rollback to snapshot baseline
+   */
   rollback(snapshotId) {
     const baseSnapshot = this.getSnapshot(snapshotId);
     if (!baseSnapshot) {
       return {
-        success: false,
-        snapshotId: snapshotId || 'unknown',
-        restoredFiles: [],
-        deletedFiles: [],
-        revertedFiles: [],
-        durationMs: 0,
+        success,
+        snapshotId,
+        restoredFiles,
+        deletedFiles,
+        revertedFiles,
+        durationMs,
         error: `Snapshot not found: ${snapshotId || 'latest'}`,
       };
     }
@@ -142,6 +163,9 @@ export class CoWSnapshotManager {
     return result;
   }
 
+  /**
+   * Commit active changes into a new baseline snapshot
+   */
   commit(name) {
     const startTime = Date.now();
     const activeTx = this.journalTracker.getActiveTransaction();
@@ -149,12 +173,12 @@ export class CoWSnapshotManager {
     this.journalTracker.closeTransaction();
 
     return {
-      success: true,
-      snapshotId: newSnapshot.id,
+      success,
+      snapshotId,
       transactionId: activeTx?.id,
-      fileCount: newSnapshot.fileCount,
-      treeHash: newSnapshot.treeHash,
-      durationMs: Date.now() - startTime,
+      fileCount,
+      treeHash,
+      durationMs) - startTime,
     };
   }
 }

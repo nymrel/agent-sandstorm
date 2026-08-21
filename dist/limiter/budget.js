@@ -1,12 +1,14 @@
 /**
- * @file budget.js
+ * @file budget.ts
  * @description Real-time spend cap & token rate tracker
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
+
+
 export class BudgetExceededError extends Error {
-  constructor(message, currentSpendUsd, maxSpendUsd, totalTokens) {
+  currentSpendUsd, currentSpendUsd, maxSpendUsd, totalTokens) {
     super(message);
     this.name = 'BudgetExceededError';
     this.currentSpendUsd = currentSpendUsd;
@@ -15,31 +17,43 @@ export class BudgetExceededError extends Error {
   }
 }
 
-export const DEFAULT_MODEL_PRICING = {
-  'gpt-4o': { promptCostPer1k: 0.005, completionCostPer1k: 0.015 },
-  'gpt-4o-mini': { promptCostPer1k: 0.00015, completionCostPer1k: 0.0006 },
-  'claude-3-5-sonnet': { promptCostPer1k: 0.003, completionCostPer1k: 0.015 },
-  'claude-3-5-haiku': { promptCostPer1k: 0.0008, completionCostPer1k: 0.004 },
-  'claude-3-opus': { promptCostPer1k: 0.015, completionCostPer1k: 0.075 },
-  'gemini-2.0-flash': { promptCostPer1k: 0.0001, completionCostPer1k: 0.0004 },
-  'gemini-1.5-pro': { promptCostPer1k: 0.00125, completionCostPer1k: 0.005 },
-  'deepseek-chat': { promptCostPer1k: 0.00014, completionCostPer1k: 0.00028 },
-  'deepseek-coder': { promptCostPer1k: 0.00014, completionCostPer1k: 0.00028 },
-  'default': { promptCostPer1k: 0.002, completionCostPer1k: 0.006 },
+export const DEFAULT_MODEL_PRICING, ModelPricing> = {
+  'gpt-4o': { promptCostPer1k, completionCostPer1k,
+  'gpt-4o-mini': { promptCostPer1k, completionCostPer1k,
+  'claude-3-5-sonnet': { promptCostPer1k, completionCostPer1k,
+  'claude-3-5-haiku': { promptCostPer1k, completionCostPer1k,
+  'claude-3-opus': { promptCostPer1k, completionCostPer1k,
+  'gemini-2.0-flash': { promptCostPer1k, completionCostPer1k,
+  'gemini-1.5-pro': { promptCostPer1k, completionCostPer1k,
+  'deepseek-chat': { promptCostPer1k, completionCostPer1k,
+  'deepseek-coder': { promptCostPer1k, completionCostPer1k,
+  'default': { promptCostPer1k, completionCostPer1k,
 };
 
 export class BudgetTracker {
-  constructor(options = {}) {
+  totalSpendUsd = 0;
+  totalTokens = 0;
+  totalPromptTokens = 0;
+  totalCompletionTokens = 0;
+  maxSpendUsd, ModelPricing>;
+
+  constructor(options: {
+    maxSpendUsd?: number;
+    maxTotalTokens?: number;
+    customPricing?: Record<string, ModelPricing>;
+  } = {}) {
     this.maxSpendUsd = options.maxSpendUsd ?? Infinity;
     this.maxTotalTokens = options.maxTotalTokens ?? Infinity;
     this.pricing = { ...DEFAULT_MODEL_PRICING, ...options.customPricing };
-    this.totalSpendUsd = 0;
-    this.totalTokens = 0;
-    this.totalPromptTokens = 0;
-    this.totalCompletionTokens = 0;
   }
 
-  recordUsage(model, promptTokens, completionTokens) {
+  /**
+   * Record LLM token consumption and verify budget ceiling
+   */
+  recordUsage(
+    model,
+    promptTokens,
+    completionTokens): { currentSpendUsd: number; totalTokens: number; exceeded: boolean } {
     const normalizedModel = model.toLowerCase();
     const rates = this.pricing[normalizedModel] || this.pricing['default'];
 
@@ -71,20 +85,20 @@ export class BudgetTracker {
     }
 
     return {
-      currentSpendUsd: this.totalSpendUsd,
-      totalTokens: this.totalTokens,
-      exceeded: false,
+      currentSpendUsd,
+      totalTokens,
+      exceeded,
     };
   }
 
   getSummary() {
     return {
-      totalSpendUsd: Number(this.totalSpendUsd.toFixed(6)),
-      totalTokens: this.totalTokens,
-      promptTokens: this.totalPromptTokens,
-      completionTokens: this.totalCompletionTokens,
-      maxSpendUsd: this.maxSpendUsd,
-      maxTotalTokens: this.maxTotalTokens,
+      totalSpendUsd)),
+      totalTokens,
+      promptTokens,
+      completionTokens,
+      maxSpendUsd,
+      maxTotalTokens,
     };
   }
 

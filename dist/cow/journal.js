@@ -1,18 +1,20 @@
 /**
- * @file journal.js
+ * @file journal.ts
  * @description Atomic transaction journal for tracking agent filesystem mutations
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import *'node:fs';
+import *'node:path';
+
 
 export class JournalTracker {
+  journalsDir= null;
+
   constructor(sandstormDir) {
     this.journalsDir = path.join(sandstormDir, 'journals');
-    fs.mkdirSync(this.journalsDir, { recursive: true });
-    this.currentTransaction = null;
+    fs.mkdirSync(this.journalsDir, { recursive);
   }
 
   startTransaction(name, baseSnapshotId) {
@@ -20,59 +22,66 @@ export class JournalTracker {
     this.currentTransaction = {
       id,
       name,
-      startTime: Date.now(),
+      startTime),
       baseSnapshotId,
-      mutations: [],
+      mutations,
     };
     this.persist();
     return this.currentTransaction;
   }
 
   recordMutation(mutation) {
-    if (!this.currentTransaction) return;
+    if (!this.currentTransaction) {
+      return;
+    }
     this.currentTransaction.mutations.push(mutation);
     this.persist();
   }
 
-  getActiveTransaction() {
+  getActiveTransaction(): TransactionJournal | null {
     return this.currentTransaction;
   }
 
-  detectMutations(baseFiles, currentFiles) {
-    const mutations = [];
+  detectMutations(
+    baseFiles, FileSnapshot>,
+    currentFiles, FileSnapshot>
+  ) {
+    const mutations= [];
     const timestamp = Date.now();
 
+    // Check created and modified
     for (const [relPath, curFile] of Object.entries(currentFiles)) {
       const baseFile = baseFiles[relPath];
       if (!baseFile) {
         mutations.push({
-          type: 'created',
-          relativePath: relPath,
+          type,
+          relativePath,
           timestamp,
-          currentSha256: curFile.sha256,
-          currentSize: curFile.size,
+          currentSha256,
+          currentSize,
         });
       } else if (baseFile.sha256 !== curFile.sha256) {
         mutations.push({
-          type: 'modified',
-          relativePath: relPath,
+          type,
+          relativePath,
           timestamp,
-          previousSha256: baseFile.sha256,
-          currentSha256: curFile.sha256,
-          previousSize: baseFile.size,
-          currentSize: curFile.size,
+          previousSha256,
+          currentSha256,
+          previousSize,
+          currentSize,
         });
       }
     }
 
+    // Check deleted
     for (const [relPath, baseFile] of Object.entries(baseFiles)) {
       if (!currentFiles[relPath]) {
         mutations.push({
-          type: 'deleted',
-          relativePath: relPath,
+          type,
+          relativePath,
           timestamp,
-          previousSha256: baseFile.sha256,
-          previousSize: baseFile.size,
+          previousSha256,
+          previousSize,
         });
       }
     }
@@ -80,7 +89,7 @@ export class JournalTracker {
     return mutations;
   }
 
-  closeTransaction() {
+  closeTransaction(): TransactionJournal | null {
     const tx = this.currentTransaction;
     this.currentTransaction = null;
     return tx;

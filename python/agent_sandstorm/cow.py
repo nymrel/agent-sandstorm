@@ -59,7 +59,7 @@ class Snapshot:
 
 @dataclass
 class RollbackResult:
-    success: boolean = True
+    success: bool = True
     snapshot_id: str = ""
     restored_files: List[str] = field(default_factory=list)
     deleted_files: List[str] = field(default_factory=list)

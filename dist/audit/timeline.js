@@ -1,9 +1,11 @@
 /**
- * @file timeline.js
+ * @file timeline.ts
  * @description Visual ASCII timeline generator for terminal audit review
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
+
+
 
 function getSeverityBadge(severity) {
   switch (severity) {
@@ -15,12 +17,7 @@ function getSeverityBadge(severity) {
       return '[ FAIL ]';
     case 'critical':
       return '[CRIT!]';
-    default:
-      return '[ LOG  ]';
-  }
-}
-
-export function formatEventSummary(event) {
+    default) {
   const p = event.payload;
   switch (event.type) {
     case 'SANDBOX_INIT':
@@ -42,7 +39,7 @@ export function formatEventSummary(event) {
     case 'LOOP_WARNING':
       return `Loop warning: Action '${p['action']}' repeated ${p['count']}x`;
     case 'CIRCUIT_BREAKER_TRIPPED':
-      return `CIRCUIT BREAKER: ${p['reason'] || p['error']}`;
+      return `CIRCUIT BREAKER: ${p['reason']}`;
     case 'ROLLBACK_TRIGGERED':
       return `Rollback triggered -> Restored: ${p['restored'] || 0}, Deleted: ${p['deleted'] || 0}, Reverted: ${p['reverted'] || 0}`;
     case 'COMMIT_COMPLETED':
@@ -57,7 +54,7 @@ export function exportTimelineAscii(events, title = 'SANDSTORM EXECUTION AUDIT T
     return 'No events recorded in audit log.';
   }
 
-  const lines = [];
+  const lines= [];
   const width = 80;
   const separator = '═'.repeat(width);
   const thinSep = '─'.repeat(width);

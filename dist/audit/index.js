@@ -1,7 +1,7 @@
 /**
- * @file index.js
+ * @file index.ts
  * @description Cryptographic SHA-256 audit log exporter & visual timeline generator
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

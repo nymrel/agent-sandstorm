@@ -1,15 +1,11 @@
 /**
- * @file snapshot.js
+ * @file snapshot.ts
  * @description Copy-on-Write workspace snapshotter & content-addressed object store
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as crypto from 'node:crypto';
-
-export const DEFAULT_IGNORED_DIRS = new Set([
+import *'node= new Set([
   '.git',
   '.sandstorm',
   'node_modules',
@@ -26,7 +22,7 @@ export const DEFAULT_IGNORED_DIRS = new Set([
   'coverage',
 ]);
 
-export const DEFAULT_IGNORED_FILES = new Set([
+const DEFAULT_IGNORED_FILES = new Set([
   '.DS_Store',
   'Thumbs.db',
 ]);
@@ -40,7 +36,7 @@ export function computeBufferSha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-export function computeTreeHash(files) {
+export function computeTreeHash(files, FileSnapshot>) {
   const sortedPaths = Object.keys(files).sort();
   const hasher = crypto.createHash('sha256');
   for (const relPath of sortedPaths) {
@@ -52,17 +48,26 @@ export function computeTreeHash(files) {
   return hasher.digest('hex');
 }
 
-export function scanWorkspaceFiles(workspaceRoot, options = {}) {
+export interface ScanOptions {
+  ignoredDirs?: Set<string>;
+  ignoredFiles?: Set<string>;
+  customIgnorePatterns?: RegExp[];
+}
+
+export function scanWorkspaceFiles(
+  workspaceRoot: string,
+  options= {}
+): Record<string, FileSnapshot> {
   const ignoredDirs = options.ignoredDirs || DEFAULT_IGNORED_DIRS;
   const ignoredFiles = options.ignoredFiles || DEFAULT_IGNORED_FILES;
-  const result = {};
+  const result, FileSnapshot> = {};
 
   if (!fs.existsSync(workspaceRoot)) {
     return result;
   }
 
   function walk(currentDir) {
-    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const entries = fs.readdirSync(currentDir, { withFileTypes);
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
       const relativePath = path.relative(workspaceRoot, fullPath).replace(/\\/g, '/');
@@ -80,15 +85,15 @@ export function scanWorkspaceFiles(workspaceRoot, options = {}) {
           const stats = fs.statSync(fullPath);
           const sha256 = computeFileSha256(fullPath);
           result[relativePath] = {
-            path: fullPath,
+            path,
             relativePath,
             sha256,
-            size: stats.size,
-            mtimeMs: stats.mtimeMs,
-            mode: stats.mode,
+            size,
+            mtimeMs,
+            mode,
           };
         } catch {
-          // Ignore files that disappeared
+          // File might have been locked or deleted during scan
         }
       }
     }
@@ -99,9 +104,9 @@ export function scanWorkspaceFiles(workspaceRoot, options = {}) {
 }
 
 export class ObjectStore {
-  constructor(sandstormDir) {
+  storeRoot) {
     this.storeRoot = path.join(sandstormDir, 'objects');
-    fs.mkdirSync(this.storeRoot, { recursive: true });
+    fs.mkdirSync(this.storeRoot, { recursive);
   }
 
   getObjectPath(sha256) {
@@ -113,7 +118,7 @@ export class ObjectStore {
     const dest = this.getObjectPath(sha256);
     if (!fs.existsSync(dest)) {
       const destDir = path.dirname(dest);
-      fs.mkdirSync(destDir, { recursive: true });
+      fs.mkdirSync(destDir, { recursive);
       fs.copyFileSync(filePath, dest);
     }
   }
@@ -122,7 +127,7 @@ export class ObjectStore {
     const dest = this.getObjectPath(sha256);
     if (!fs.existsSync(dest)) {
       const destDir = path.dirname(dest);
-      fs.mkdirSync(destDir, { recursive: true });
+      fs.mkdirSync(destDir, { recursive);
       fs.writeFileSync(dest, buffer);
     }
   }

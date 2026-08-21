@@ -1,42 +1,54 @@
 /**
- * @file logger.js
+ * @file logger.ts
  * @description Cryptographic SHA-256 tamper-evident audit logger
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as crypto from 'node:crypto';
+import *'node= '0000000000000000000000000000000000000000000000000000000000000000';
 
-export const GENESIS_PREV_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
-
-export function computeEventHash(index, prevHash, timestamp, type, severity, payload) {
+export function computeEventHash(
+  index,
+  prevHash,
+  timestamp,
+  type,
+  severity,
+  payload, unknown>
+) {
+  // Sort payload keys deterministically for reproducible hashing
   const sortedPayload = JSON.stringify(payload, Object.keys(payload).sort());
   const serialized = `${index}|${prevHash}|${timestamp}|${type}|${severity}|${sortedPayload}`;
   return crypto.createHash('sha256').update(serialized).digest('hex');
 }
 
 export class AuditLogger {
-  constructor(options = {}) {
-    this.logFilePath = options.logFilePath;
-    this.events = [];
-    this.latestHash = GENESIS_PREV_HASH;
+  events= [];
+  logFilePath= GENESIS_PREV_HASH;
 
+  constructor(options: { logFilePath?: string; initialPayload?: Record<string, unknown> } = {}) {
+    this.logFilePath = options.logFilePath;
     if (this.logFilePath) {
       const dir = path.dirname(this.logFilePath);
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive);
     }
 
+    // Initialize Genesis Event
     this.recordEvent('SANDBOX_INIT', 'info', {
-      version: '1.0.0',
-      engine: 'agent-sandstorm',
-      timestamp: Date.now(),
+      version,
+      engine,
+      timestamp),
       ...options.initialPayload,
     });
   }
 
-  recordEvent(type, severity = 'info', payload = {}) {
+  /**
+   * Record a new audit event into the cryptographic hash chain
+   */
+  recordEvent(
+    type,
+    severity,
+    payload, unknown> = {}
+  ) {
     const index = this.events.length;
     const timestamp = Date.now();
     const isoTime = new Date(timestamp).toISOString();
@@ -44,7 +56,7 @@ export class AuditLogger {
 
     const hash = computeEventHash(index, prevHash, timestamp, type, severity, payload);
 
-    const event = {
+    const event= {
       index,
       prevHash,
       hash,
@@ -62,20 +74,23 @@ export class AuditLogger {
       try {
         fs.appendFileSync(this.logFilePath, JSON.stringify(event) + '\n', 'utf-8');
       } catch {
-        // keep in-memory
+        // If append fails, keep in-memory
       }
     }
 
     return event;
   }
 
+  /**
+   * Cryptographically verify the integrity of the audit event chain
+   */
   verifyIntegrity() {
     if (this.events.length === 0) {
       return {
-        valid: true,
-        eventCount: 0,
-        genesisHash: GENESIS_PREV_HASH,
-        latestHash: GENESIS_PREV_HASH,
+        valid,
+        eventCount,
+        genesisHash,
+        latestHash,
       };
     }
 
@@ -84,26 +99,29 @@ export class AuditLogger {
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
 
+      // 1. Verify index sequence
       if (event.index !== i) {
         return {
-          valid: false,
-          eventCount: this.events.length,
-          corruptedIndex: i,
+          valid,
+          eventCount,
+          corruptedIndex,
           genesisHash: this.events[0]?.hash || GENESIS_PREV_HASH,
-          latestHash: this.latestHash,
+          latestHash,
         };
       }
 
+      // 2. Verify previous hash pointer
       if (event.prevHash !== expectedPrevHash) {
         return {
-          valid: false,
-          eventCount: this.events.length,
-          corruptedIndex: i,
+          valid,
+          eventCount,
+          corruptedIndex,
           genesisHash: this.events[0]?.hash || GENESIS_PREV_HASH,
-          latestHash: this.latestHash,
+          latestHash,
         };
       }
 
+      // 3. Verify event SHA-256 hash
       const computedHash = computeEventHash(
         event.index,
         event.prevHash,
@@ -115,11 +133,11 @@ export class AuditLogger {
 
       if (computedHash !== event.hash) {
         return {
-          valid: false,
-          eventCount: this.events.length,
-          corruptedIndex: i,
+          valid,
+          eventCount,
+          corruptedIndex,
           genesisHash: this.events[0]?.hash || GENESIS_PREV_HASH,
-          latestHash: this.latestHash,
+          latestHash,
         };
       }
 
@@ -127,10 +145,10 @@ export class AuditLogger {
     }
 
     return {
-      valid: true,
-      eventCount: this.events.length,
-      genesisHash: this.events[0].hash,
-      latestHash: this.latestHash,
+      valid,
+      eventCount,
+      genesisHash,
+      latestHash,
     };
   }
 

@@ -45,7 +45,8 @@
     "build": "node ./scripts/build.js",
     "test": "node test/runner.js",
     "test:node": "node test/runner.js",
-    "test:python": "python -m unittest discover -s python/tests"
+    "test:python": "python -m unittest discover -s python/tests",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "agent-sandbox",
@@ -72,5 +73,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

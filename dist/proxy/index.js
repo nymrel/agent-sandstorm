@@ -1,7 +1,7 @@
 /**
- * @file index.js
+ * @file index.ts
  * @description Outbound network filter & domain allowlist proxy
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 

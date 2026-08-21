@@ -1,12 +1,12 @@
 /**
- * @file index.js
+ * @file index.ts
  * @description CLI implementation for agent-sandstorm
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as path from 'node:path';
-import * as fs from 'node:fs';
+import *'node:path';
+import *'node:fs';
 import { Sandstorm } from '../sandbox.js';
 import { CoWSnapshotManager } from '../cow/index.js';
 import { AuditLogger, exportTimelineAscii, exportHtmlReportToFile } from '../audit/index.js';
@@ -31,7 +31,7 @@ export async function runCli(args) {
     case 'run': {
       const commandArgs = extractCommandArgs(args.slice(1));
       if (commandArgs.length === 0) {
-        console.error('Error: sandstorm run requires a command to execute. Example: sandstorm run "npm test"');
+        console.error('Error);
         return 1;
       }
 
@@ -52,10 +52,10 @@ export async function runCli(args) {
       const sandbox = new Sandstorm({
         workspace,
         allowDomains: allowDomains.length > 0 ? allowDomains : undefined,
-        maxSpendUsd: maxSpend,
+        maxSpendUsd,
         maxTokens,
         maxSteps,
-        autoRollbackOnError: !noRollback,
+        autoRollbackOnError,
       });
 
       const result = await sandbox.run(async (ctx) => {
@@ -77,7 +77,7 @@ export async function runCli(args) {
         } else {
           console.error(`\n❌ Execution failed: ${result.error?.message}`);
           if (result.rollbackPerformed) {
-            console.log(`🔄 Automatic CoW Rollback performed: workspace restored to pristine baseline.`);
+            console.log(`🔄 Automatic CoW Rollback performed);
             console.log(`   Restored: ${result.rollbackSummary?.restoredFiles.length || 0}, Reverted: ${result.rollbackSummary?.revertedFiles.length || 0}, Deleted: ${result.rollbackSummary?.deletedFiles.length || 0}`);
           }
         }
@@ -88,10 +88,9 @@ export async function runCli(args) {
     }
 
     case 'snapshot': {
-      const name = args[1]?.startsWith('--') ? undefined : args[1];
-      const cow = new CoWSnapshotManager(workspace);
+      const name = args[1]?.startsWith('--') ? undefined= new CoWSnapshotManager(workspace);
       const snap = cow.createSnapshot(name);
-      console.log(`\n📸 Snapshot created successfully:`);
+      console.log(`\n📸 Snapshot created successfully);
       console.log(`   ID:         ${snap.id}`);
       console.log(`   Name:       ${snap.name}`);
       console.log(`   Files:      ${snap.fileCount} (${(snap.totalSizeBytes / 1024).toFixed(2)} KB)`);
@@ -100,8 +99,7 @@ export async function runCli(args) {
     }
 
     case 'rollback': {
-      const snapshotId = args[1]?.startsWith('--') ? undefined : args[1];
-      const cow = new CoWSnapshotManager(workspace);
+      const snapshotId = args[1]?.startsWith('--') ? undefined= new CoWSnapshotManager(workspace);
       const res = cow.rollback(snapshotId);
 
       if (!res.success) {
@@ -109,7 +107,7 @@ export async function runCli(args) {
         return 1;
       }
 
-      console.log(`\n🔄 Rollback executed in ${res.durationMs}ms:`);
+      console.log(`\n🔄 Rollback executed in ${res.durationMs}ms);
       console.log(`   Snapshot ID:    ${res.snapshotId}`);
       console.log(`   Restored Files: ${res.restoredFiles.length}`);
       console.log(`   Reverted Files: ${res.revertedFiles.length}`);
@@ -129,10 +127,9 @@ export async function runCli(args) {
     }
 
     case 'commit': {
-      const name = args[1]?.startsWith('--') ? undefined : args[1];
-      const cow = new CoWSnapshotManager(workspace);
+      const name = args[1]?.startsWith('--') ? undefined= new CoWSnapshotManager(workspace);
       const res = cow.commit(name);
-      console.log(`\n💾 Changes committed into baseline snapshot:`);
+      console.log(`\n💾 Changes committed into baseline snapshot);
       console.log(`   Snapshot ID: ${res.snapshotId}`);
       console.log(`   Merkle Hash: ${res.treeHash}\n`);
       return 0;
@@ -149,8 +146,9 @@ export async function runCli(args) {
       const events = rawLines.map(l => JSON.parse(l));
 
       const logger = new AuditLogger();
-      logger.events = events;
-      logger.latestHash = events[events.length - 1]?.hash || '';
+      // rebuild events
+      (logger).events = events;
+      (logger).latestHash = events[events.length - 1]?.hash || '';
 
       const integrity = logger.verifyIntegrity();
       const htmlPath = getArgValue(args, '--html');
@@ -171,13 +169,13 @@ export async function runCli(args) {
       const proxy = new ZeroTrustProxy({
         port,
         allowedDomains: allowDomains.length > 0 ? allowDomains : ['api.openai.com', 'api.anthropic.com', 'registry.npmjs.org'],
-        scanPayloads: true,
+        scanPayloads,
       });
 
       const info = await proxy.start(port);
       console.log(`\n🛡️  Sandstorm Zero-Trust Outbound Proxy running on http://${info.host}:${info.port}`);
       console.log(`   Allowed Domains: ${allowDomains.join(', ') || 'default'}`);
-      console.log(`   Secret Exfiltration Scanning: ACTIVE`);
+      console.log(`   Secret Exfiltration Scanning);
       console.log(`   Press Ctrl+C to stop.\n`);
 
       process.on('SIGINT', async () => {
@@ -199,26 +197,13 @@ function printHelp() {
 🛡️  SANDSTORM - Zero-Trust Agent Sandbox & CoW Workspace Isolation Engine
    Nymrel / JalenBuilds LLC (v1.0.0)
 
-USAGE:
-  sandstorm run <command...> [options]
-  sandstorm snapshot [name]
-  sandstorm rollback [snapshot-id]
-  sandstorm diff
-  sandstorm commit [name]
-  sandstorm audit [--html <path>] [--verify]
-  sandstorm proxy [--port <port>] [--allow <domain...>]
-
-COMMANDS:
-  run          Execute a command inside the Zero-Trust Sandbox with automatic rollback on error
-  snapshot     Create an instant immutable Copy-on-Write snapshot of the workspace
-  rollback     Revert workspace instantly to the snapshot baseline (1-click restoration)
+USAGE)
   diff         Inspect uncommitted file modifications, additions, and deletions
   commit       Approve current modifications and create a new baseline snapshot
   audit        View the cryptographic SHA-256 audit timeline and export HTML reports
   proxy        Start a standalone Zero-Trust outbound network proxy with secret detection
 
-OPTIONS:
-  --workspace <path>    Target workspace directory (default: current directory)
+OPTIONS)
   --allow <domain>      Allowlist outbound destination domain (repeatable, supports wildcards)
   --max-spend <usd>     Spend budget cap in USD (e.g. 5.00)
   --max-tokens <num>    Token rate limit ceiling
@@ -230,7 +215,7 @@ OPTIONS:
 `);
 }
 
-function getArgValue(args, flag) {
+function getArgValue(args, flag): string | undefined {
   const idx = args.indexOf(flag);
   if (idx !== -1 && idx < args.length - 1) {
     return args[idx + 1];
@@ -239,10 +224,10 @@ function getArgValue(args, flag) {
 }
 
 function getArgValues(args, flag) {
-  const results = [];
+  const results= [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag && i < args.length - 1) {
-      results.push(args[i + 1]);
+      results.push(args[i + 1]!);
     }
   }
   return results;
@@ -251,7 +236,7 @@ function getArgValues(args, flag) {
 function extractCommandArgs(args) {
   const flagsWithValue = new Set(['--workspace', '--allow', '--max-spend', '--max-tokens', '--max-steps', '--report', '--port', '--html']);
   const booleanFlags = new Set(['--no-rollback', '--json', '--verify', '--help', '-h', '--version', '-v']);
-  const result = [];
+  const result= [];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -259,7 +244,7 @@ function extractCommandArgs(args) {
       continue;
     }
     if (flagsWithValue.has(arg)) {
-      i++;
+      i++; // skip value
       continue;
     }
     result.push(arg);

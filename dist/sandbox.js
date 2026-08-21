@@ -1,26 +1,27 @@
 /**
- * @file sandbox.js
+ * @file sandbox.ts
  * @description Master Zero-Trust Agent Execution Sandbox Orchestrator
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as path from 'node:path';
+import *'node:path';
 import { spawn } from 'node:child_process';
+
 import { CoWSnapshotManager } from './cow/index.js';
 import { ZeroTrustProxy } from './proxy/index.js';
 import { ExecutionLimiter } from './limiter/index.js';
 import { AuditLogger, exportTimelineAscii, exportHtmlReportToFile } from './audit/index.js';
 
 export class Sandstorm {
-  constructor(options) {
+  workspace) {
     this.workspace = path.resolve(options.workspace);
     const sandstormDir = path.join(this.workspace, '.sandstorm');
 
     this.options = {
-      workspace: this.workspace,
-      allowDomains: options.allowDomains || ['api.openai.com', 'api.anthropic.com', 'registry.npmjs.org', 'pypi.org'],
-      blockDomains: options.blockDomains || [],
+      workspace,
+      allowDomains, 'api.anthropic.com', 'registry.npmjs.org', 'pypi.org'],
+      blockDomains,
       maxSpendUsd: options.maxSpendUsd ?? Infinity,
       maxTokens: options.maxTokens ?? Infinity,
       maxSteps: options.maxSteps ?? 100,
@@ -29,59 +30,64 @@ export class Sandstorm {
       detectRunawayLoops: options.detectRunawayLoops ?? true,
       loopThreshold: options.loopThreshold ?? 3,
       scanSecrets: options.scanSecrets ?? true,
-      customSecretPatterns: options.customSecretPatterns || [],
-      auditLogPath: options.auditLogPath || path.join(sandstormDir, 'audit.jsonl'),
+      customSecretPatterns,
+      auditLogPath, 'audit.jsonl'),
       silent: options.silent ?? false,
     };
 
     this.cow = new CoWSnapshotManager(this.workspace);
 
     this.audit = new AuditLogger({
-      logFilePath: this.options.auditLogPath,
+      logFilePath,
       initialPayload: {
-        workspace: this.workspace,
-        allowDomains: this.options.allowDomains,
-        autoRollback: this.options.autoRollbackOnError,
+        workspace,
+        allowDomains,
+        autoRollback,
       },
     });
 
     this.proxy = new ZeroTrustProxy({
-      allowedDomains: this.options.allowDomains,
-      blockedDomains: this.options.blockDomains,
-      scanPayloads: this.options.scanSecrets,
-      customSecretPatterns: this.options.customSecretPatterns,
-      onSecretDetected: (detection) => {
+      allowedDomains,
+      blockedDomains,
+      scanPayloads,
+      customSecretPatterns,
+      onSecretDetected) => {
         this.audit.recordEvent('SECRET_BLOCKED', 'critical', {
-          pattern: detection.patternName,
-          severity: detection.severity,
-          location: detection.location,
-          redacted: detection.redactedText,
+          pattern,
+          severity,
+          location,
+          redacted,
         });
       },
-      onBlockedDomain: (domain, url) => {
+      onBlockedDomain, url) => {
         this.audit.recordEvent('DOMAIN_BLOCKED', 'warn', { domain, url });
       },
     });
 
     this.limiter = new ExecutionLimiter({
-      maxSpendUsd: this.options.maxSpendUsd,
-      maxTotalTokens: this.options.maxTokens,
-      maxSteps: this.options.maxSteps,
-      maxDurationMs: this.options.maxDurationMs,
-      loopThreshold: this.options.loopThreshold,
+      maxSpendUsd,
+      maxTotalTokens,
+      maxSteps,
+      maxDurationMs,
+      loopThreshold,
     });
   }
 
-  async run(fn) {
+  /**
+   * Run an autonomous agent callback inside the Zero-Trust sandbox
+   */
+  async run(
+    fn) => Promise<T>
+  ): Promise<SandboxResult<T>> {
     const startTime = Date.now();
 
     // 1. Create Pristine Baseline CoW Snapshot
     const baseSnapshot = this.cow.createSnapshot('pre-execution-baseline');
     this.audit.recordEvent('SNAPSHOT_CREATED', 'info', {
-      snapshotId: baseSnapshot.id,
-      name: baseSnapshot.name,
-      fileCount: baseSnapshot.fileCount,
-      treeHash: baseSnapshot.treeHash,
+      snapshotId,
+      name,
+      fileCount,
+      treeHash,
     });
 
     // 2. Start Zero-Trust Outbound Proxy
@@ -89,131 +95,131 @@ export class Sandstorm {
     const proxyEnv = this.proxy.getEnv();
 
     this.limiter.start();
-    let resultValue;
-    let executionError;
-    let rollbackPerformed = false;
-    let rollbackSummary;
-
-    const ctx = {
-      workspace: this.workspace,
+    let resultValue= false;
+    let rollbackSummary= {
+      workspace,
       env: { ...process.env, ...proxyEnv },
-      exec: async (command, options = {}) => {
+      exec, options= {}) => {
         this.limiter.recordStep(command.split(' ')[0] || command, command);
         this.audit.recordEvent('EXEC_STARTED', 'info', { command });
 
         const execRes = await this.execCommandInternal(command, {
-          cwd: this.workspace,
+          cwd,
           env: { ...proxyEnv, ...options.env },
           ...options,
         });
 
         this.audit.recordEvent('EXEC_FINISHED', execRes.exitCode === 0 ? 'info' : 'warn', {
           command,
-          exitCode: execRes.exitCode,
-          durationMs: execRes.durationMs,
+          exitCode,
+          durationMs,
         });
 
         return execRes;
       },
-      recordTokenUsage: (model, promptTokens, completionTokens) => {
+      recordTokenUsage, promptTokens, completionTokens) => {
         const usage = this.limiter.recordTokens(model, promptTokens, completionTokens);
         this.audit.recordEvent('BUDGET_ACCUMULATED', 'info', {
           model,
           promptTokens,
           completionTokens,
-          spendUsd: usage.currentSpendUsd,
-          totalTokens: usage.totalTokens,
+          spendUsd,
+          totalTokens,
         });
         return usage;
       },
-      recordStep: (actionName, detail) => {
+      recordStep, detail) => {
         this.limiter.recordStep(actionName, detail);
         this.audit.recordEvent('STEP_EXECUTED', 'info', { actionName, detail });
       },
-      snapshot: (name) => {
+      snapshot: (name?: string) => {
         const snap = this.cow.createSnapshot(name);
         this.audit.recordEvent('SNAPSHOT_CREATED', 'info', {
-          snapshotId: snap.id,
-          name: snap.name,
-          treeHash: snap.treeHash,
+          snapshotId,
+          name,
+          treeHash,
         });
         return snap;
       },
-      rollback: (snapshotId) => {
+      rollback: (snapshotId?: string) => {
         const rb = this.cow.rollback(snapshotId);
         this.audit.recordEvent('ROLLBACK_TRIGGERED', 'warn', {
-          snapshotId: rb.snapshotId,
-          restored: rb.restoredFiles.length,
-          deleted: rb.deletedFiles.length,
-          reverted: rb.revertedFiles.length,
+          snapshotId,
+          restored,
+          deleted,
+          reverted,
         });
         return rb;
       },
-      diff: () => this.cow.diff(),
+      diff) => this.cow.diff(),
     };
 
     try {
       resultValue = await fn(ctx);
     } catch (err) {
-      executionError = err instanceof Error ? err : new Error(String(err));
+      executionError = err instanceof Error ? err));
       this.audit.recordEvent('CIRCUIT_BREAKER_TRIPPED', 'critical', {
-        error: executionError.message,
-        stack: executionError.stack,
+        error,
+        stack,
       });
 
       if (this.options.autoRollbackOnError) {
         rollbackSummary = this.cow.rollback(baseSnapshot.id);
         rollbackPerformed = true;
         this.audit.recordEvent('ROLLBACK_TRIGGERED', 'warn', {
-          snapshotId: baseSnapshot.id,
-          restored: rollbackSummary.restoredFiles.length,
-          deleted: rollbackSummary.deletedFiles.length,
-          reverted: rollbackSummary.revertedFiles.length,
-          durationMs: rollbackSummary.durationMs,
+          snapshotId,
+          restored,
+          deleted,
+          reverted,
+          durationMs,
         });
       }
     } finally {
       await this.proxy.stop();
     }
 
+    const currentDiff = this.cow.diff(baseSnapshot.id);
     const spendSummary = this.limiter.getSummary();
     const auditVerified = this.audit.verifyIntegrity();
     const durationMs = Date.now() - startTime;
 
     return {
-      success: !executionError,
-      result: resultValue,
-      error: executionError,
+      success,
+      result,
+      error,
       rollbackPerformed,
       rollbackSummary,
       baseSnapshot,
       finalTreeHash: rollbackPerformed ? baseSnapshot.treeHash : this.cow.createSnapshot('final-state').treeHash,
       auditSummary: {
-        eventCount: this.audit.getEvents().length,
-        verified: auditVerified.valid,
-        latestHash: this.audit.getLatestHash(),
+        eventCount).length,
+        verified,
+        latestHash),
       },
       spendSummary: {
-        totalSpendUsd: spendSummary.totalSpendUsd,
-        totalTokens: spendSummary.totalTokens,
-        stepsExecuted: spendSummary.stepsExecuted,
+        totalSpendUsd,
+        totalTokens,
+        stepsExecuted,
       },
       durationMs,
     };
   }
 
-  async exec(command, options = {}) {
+  /**
+   * Helper to execute a command with sandboxed environment variables
+   */
+  async exec(command, options= {}) {
     return this.execCommandInternal(command, {
-      cwd: this.workspace,
+      cwd,
       ...options,
     });
   }
 
-  execCommandInternal(command, options = {}) {
+  execCommandInternal(command, options= {}) {
     return new Promise((resolve) => {
       const startTime = Date.now();
       const child = spawn(command, {
-        cwd: options.cwd || this.workspace,
+        cwd,
         env: { ...process.env, ...options.env },
         shell: options.shell ?? true,
       });
@@ -229,7 +235,7 @@ export class Sandstorm {
         stderr += chunk.toString();
       });
 
-      let timer = null;
+      let timer= null;
       if (options.timeoutMs) {
         timer = setTimeout(() => {
           child.kill('SIGKILL');
@@ -243,17 +249,17 @@ export class Sandstorm {
           exitCode: exitCode ?? 0,
           stdout,
           stderr,
-          durationMs: Date.now() - startTime,
+          durationMs) - startTime,
         });
       });
 
       child.on('error', (err) => {
         if (timer) clearTimeout(timer);
         resolve({
-          exitCode: 1,
+          exitCode,
           stdout,
           stderr: `${stderr}\n${err.message}`,
-          durationMs: Date.now() - startTime,
+          durationMs) - startTime,
         });
       });
     });
@@ -283,9 +289,9 @@ export class Sandstorm {
     const integrity = this.audit.verifyIntegrity();
     const spend = this.limiter.getSummary();
     exportHtmlReportToFile(filePath, this.audit.getEvents(), integrity, {
-      workspace: this.workspace,
-      totalSpendUsd: spend.totalSpendUsd,
-      totalTokens: spend.totalTokens,
+      workspace,
+      totalSpendUsd,
+      totalTokens,
     });
   }
 }

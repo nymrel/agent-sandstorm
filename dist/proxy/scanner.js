@@ -1,64 +1,66 @@
 /**
- * @file scanner.js
+ * @file scanner.ts
  * @description Secret Exfiltration Scanner & Redaction Engine
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-export const BUILTIN_SECRET_PATTERNS = [
+
+
+export const BUILTIN_SECRET_PATTERNS= [
   {
-    name: 'OpenAI API Key',
+    name,
     regex: /sk-(?:proj-|svcacct-|admin-)?[a-zA-Z0-9_-]{20,}/g,
-    description: 'OpenAI API secret key pattern',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'Anthropic API Key',
+    name,
     regex: /sk-ant-[a-zA-Z0-9_-]{20,}/g,
-    description: 'Anthropic API secret key pattern',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'AWS Access Key ID',
+    name,
     regex: /(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}/g,
-    description: 'AWS IAM access key ID',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'GitHub Token',
+    name,
     regex: /(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}/g,
-    description: 'GitHub personal access or OAuth token',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'Google API Key',
+    name,
     regex: /AIza[0-9A-Za-z-_]{35}/g,
-    description: 'Google Cloud / Maps / Gemini API Key',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'Private Key (PEM)',
+    name)',
     regex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----/g,
-    description: 'Cryptographic private key file header',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'Slack Token',
+    name,
     regex: /xox[baprs]-[0-9a-zA-Z]{10,48}/g,
-    description: 'Slack API token',
-    severity: 'high',
+    description,
+    severity,
   },
   {
-    name: 'Stripe Secret Key',
+    name,
     regex: /sk_live_[0-9a-zA-Z]{24,}/g,
-    description: 'Stripe live payment secret key',
-    severity: 'critical',
+    description,
+    severity,
   },
   {
-    name: 'JSON Web Token (JWT)',
+    name)',
     regex: /eyJ[A-Za-z0-9-_]{10,}\.eyJ[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}/g,
-    description: 'Signed JSON Web Token credentials',
-    severity: 'high',
+    description,
+    severity,
   },
 ];
 
@@ -72,31 +74,36 @@ export function redactSecret(secret) {
 }
 
 export class SecretScanner {
-  constructor(customPatterns = []) {
+  patterns= []) {
     this.patterns = [...BUILTIN_SECRET_PATTERNS, ...customPatterns];
   }
 
-  scan(text, location = 'body') {
+  /**
+   * Scan text for any secrets
+   */
+  scan(
+    text,
+    location= 'body'
+  ) {
     if (!text || typeof text !== 'string') {
       return [];
     }
 
-    const detections = [];
+    const detections= [];
 
     for (const pattern of this.patterns) {
+      // Reset regex state for global regexes
       pattern.regex.lastIndex = 0;
-      let match;
-
-      while ((match = pattern.regex.exec(text)) !== null) {
+      let match= pattern.regex.exec(text)) !== null) {
         const matched = match[0];
         detections.push({
-          patternName: pattern.name,
-          description: pattern.description,
-          severity: pattern.severity,
-          matchedText: matched,
-          redactedText: redactSecret(matched),
+          patternName,
+          description,
+          severity,
+          matchedText,
+          redactedText),
           location,
-          timestamp: Date.now(),
+          timestamp),
         });
       }
     }
@@ -104,6 +111,9 @@ export class SecretScanner {
     return detections;
   }
 
+  /**
+   * Redact all detected secrets from a text string
+   */
   redactAll(text) {
     if (!text || typeof text !== 'string') return text;
     let redacted = text;

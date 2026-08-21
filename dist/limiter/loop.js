@@ -1,12 +1,12 @@
 /**
  * @file loop.ts
  * @description Real-time recursive loop brake & cycle detector for runaway agents
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
 export class RunawayLoopError extends Error {
-  constructor(message, pattern, repetitions, totalSteps) {
+  pattern, pattern, repetitions, totalSteps) {
     super(message);
     this.name = 'RunawayLoopError';
     this.pattern = pattern;
@@ -16,7 +16,7 @@ export class RunawayLoopError extends Error {
 }
 
 export class StepLimitExceededError extends Error {
-  constructor(message, totalSteps, maxSteps) {
+  totalSteps, totalSteps, maxSteps) {
     super(message);
     this.name = 'StepLimitExceededError';
     this.totalSteps = totalSteps;
@@ -24,15 +24,26 @@ export class StepLimitExceededError extends Error {
   }
 }
 
+export interface LoopDetectorOptions {
+  maxSteps?: number;
+  loopThreshold?: number;
+  windowSize?: number;
+}
+
 export class LoopDetector {
-  constructor(options = {}) {
+  maxSteps= [];
+  totalSteps = 0;
+
+  constructor(options= {}) {
     this.maxSteps = options.maxSteps ?? 100;
     this.loopThreshold = options.loopThreshold ?? 3;
     this.windowSize = options.windowSize ?? 20;
-    this.actionHistory = [];
-    this.totalSteps = 0;
   }
 
+  /**
+   * Record an action (e.g. tool call signature, shell command, file target)
+   * and check for runaway recursive loops.
+   */
   recordAction(actionIdentifier, detail) {
     this.totalSteps++;
 
@@ -54,11 +65,15 @@ export class LoopDetector {
     this.checkLoops();
   }
 
+  /**
+   * Check for repeated patterns in the sliding window
+   */
   checkLoops() {
     const len = this.actionHistory.length;
     if (len < this.loopThreshold) return;
 
     // 1. Check for single repetitive action (Period = 1)
+    // e.g. [A, A, A, A]
     const lastAction = this.actionHistory[len - 1];
     let consecutiveCount = 0;
     for (let i = len - 1; i >= 0; i--) {
@@ -79,6 +94,7 @@ export class LoopDetector {
     }
 
     // 2. Check for cycle repetitions (Period = 2..5)
+    // e.g. [A, B, A, B, A, B] or [A, B, C, A, B, C, A, B, C]
     for (let period = 2; period <= 5; period++) {
       const requiredHistory = period * this.loopThreshold;
       if (len >= requiredHistory) {

@@ -1,37 +1,50 @@
 /**
- * @file server.js
+ * @file server.ts
  * @description High-performance Zero-Trust HTTP/CONNECT Proxy Server
- * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
 
-import * as http from 'node:http';
-import * as net from 'node:net';
-import * as url from 'node:url';
+import *'node:http';
+import *'node:net';
+import *'node:url';
+
 import { SecretScanner } from './scanner.js';
 import { DomainFilter } from './filter.js';
 
+export interface ProxyMetrics {
+  totalRequests: number;
+  allowedRequests: number;
+  blockedRequests: number;
+  secretsDetected: number;
+  bytesTransferred: number;
+}
+
 export class ZeroTrustProxy {
+  server= null;
+  config= 0;
+  host = '127.0.0.1';
+  metrics= {
+    totalRequests,
+    allowedRequests,
+    blockedRequests,
+    secretsDetected,
+    bytesTransferred,
+  };
+
   constructor(config) {
     this.config = {
-      scanPayloads: true,
-      logRequests: false,
+      scanPayloads,
+      logRequests,
       ...config,
     };
     this.scanner = new SecretScanner(this.config.customSecretPatterns);
     this.filter = new DomainFilter(this.config.allowedDomains, this.config.blockedDomains);
-    this.server = null;
-    this.port = 0;
-    this.host = '127.0.0.1';
-    this.metrics = {
-      totalRequests: 0,
-      allowedRequests: 0,
-      blockedRequests: 0,
-      secretsDetected: 0,
-      bytesTransferred: 0,
-    };
   }
 
+  /**
+   * Start the proxy server
+   */
   async start(requestedPort = this.config.port || 0, host = this.config.host || '127.0.0.1') {
     this.host = host;
 
@@ -52,7 +65,7 @@ export class ZeroTrustProxy {
         const address = this.server?.address();
         if (address && typeof address === 'object') {
           this.port = address.port;
-          resolve({ port: this.port, host: this.host });
+          resolve({ port, host);
         } else {
           reject(new Error('Failed to obtain proxy address'));
         }
@@ -60,6 +73,9 @@ export class ZeroTrustProxy {
     });
   }
 
+  /**
+   * Handle plain HTTP requests
+   */
   handleHttpRequest(req, res) {
     this.metrics.totalRequests++;
 
@@ -68,7 +84,7 @@ export class ZeroTrustProxy {
     let targetPath = rawUrl;
 
     try {
-      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      if (rawUrl.startsWith('http) || rawUrl.startsWith('https)) {
         const parsed = new url.URL(rawUrl);
         targetHost = parsed.host;
         targetPath = parsed.pathname + parsed.search;
@@ -92,10 +108,22 @@ export class ZeroTrustProxy {
         this.handleSecretViolation(res, urlSecrets, targetHost);
         return;
       }
+
+      for (const [headerName, headerVal] of Object.entries(req.headers)) {
+        if (typeof headerVal === 'string') {
+          // Check Authorization and custom headers
+          const headerSecrets = this.scanner.scan(headerVal, 'header');
+          if (headerSecrets.length > 0) {
+            // Note) and header is Authorization,
+            // we allow targeted authorization header to the exact allowed provider,
+            // but block cross-domain exfiltration or general secret leakage in unexpected headers.
+          }
+        }
+      }
     }
 
     // 3. Read Body & Scan for Secrets
-    const chunks = [];
+    const chunks= [];
     req.on('data', (chunk) => {
       chunks.push(chunk);
     });
@@ -114,11 +142,20 @@ export class ZeroTrustProxy {
         }
       }
 
+      // Forward request
       this.forwardHttpRequest(req, res, targetHost, targetPath, bodyBuffer);
     });
   }
 
-  forwardHttpRequest(req, res, targetHost, targetPath, bodyBuffer) {
+  /**
+   * Forward verified HTTP request
+   */
+  forwardHttpRequest(
+    req,
+    res,
+    targetHost,
+    targetPath,
+    bodyBuffer) {
     const hostParts = targetHost.split(':');
     const hostname = hostParts[0];
     const port = hostParts[1] ? parseInt(hostParts[1], 10) : 80;
@@ -127,9 +164,9 @@ export class ZeroTrustProxy {
       {
         hostname,
         port,
-        path: targetPath,
-        method: req.method,
-        headers: req.headers,
+        path,
+        method,
+        headers,
       },
       (proxyRes) => {
         this.metrics.allowedRequests++;
@@ -140,7 +177,7 @@ export class ZeroTrustProxy {
 
     proxyReq.on('error', (err) => {
       res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'BAD_GATEWAY', message: err.message }));
+      res.end(JSON.stringify({ error, message));
     });
 
     if (bodyBuffer.length > 0) {
@@ -149,7 +186,13 @@ export class ZeroTrustProxy {
     proxyReq.end();
   }
 
-  handleHttpsConnect(req, clientSocket, head) {
+  /**
+   * Handle HTTPS CONNECT tunnels
+   */
+  handleHttpsConnect(
+    req,
+    clientSocket,
+    head) {
     this.metrics.totalRequests++;
     const targetUrl = req.url || '';
     const [hostname, portStr] = targetUrl.split(':');
@@ -164,6 +207,7 @@ export class ZeroTrustProxy {
       return;
     }
 
+    // Connect to target server
     const serverSocket = net.connect(port, hostname, () => {
       this.metrics.allowedRequests++;
       clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
@@ -184,7 +228,10 @@ export class ZeroTrustProxy {
     });
   }
 
-  handleSecretViolation(res, detections, targetHost) {
+  handleSecretViolation(
+    res,
+    detections,
+    targetHost) {
     this.metrics.secretsDetected += detections.length;
     this.metrics.blockedRequests++;
 
@@ -194,13 +241,13 @@ export class ZeroTrustProxy {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
-        error: 'ERR_SANDSTORM_SECRET_EXFILTRATION_BLOCKED',
-        severity: first.severity,
-        pattern: first.patternName,
-        redacted: first.redactedText,
-        location: first.location,
+        error,
+        severity,
+        pattern,
+        redacted,
+        location,
         targetHost,
-        message: 'Outbound request blocked by Sandstorm: high-entropy secret detected in outbound payload.',
+        message,
       })
     );
   }
@@ -209,27 +256,30 @@ export class ZeroTrustProxy {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
-        error: 'ERR_SANDSTORM_DOMAIN_BLOCKED',
+        error,
         reason,
-        policy: 'Zero-Trust Domain Allowlist',
+        policy,
       })
     );
   }
 
-  getEnv() {
+  /**
+   * Get environment variables to inject into child processes
+   */
+  getEnv(): Record<string, string> {
     if (!this.port) {
       throw new Error('Proxy server is not running');
     }
     const proxyUrl = `http://${this.host}:${this.port}`;
     return {
-      HTTP_PROXY: proxyUrl,
-      HTTPS_PROXY: proxyUrl,
-      http_proxy: proxyUrl,
-      https_proxy: proxyUrl,
-      ALL_PROXY: proxyUrl,
-      all_proxy: proxyUrl,
-      NO_PROXY: 'localhost,127.0.0.1',
-      no_proxy: 'localhost,127.0.0.1',
+      HTTP_PROXY,
+      HTTPS_PROXY,
+      http_proxy,
+      https_proxy,
+      ALL_PROXY,
+      all_proxy,
+      NO_PROXY,127.0.0.1',
+      no_proxy,127.0.0.1',
     };
   }
 
@@ -241,6 +291,9 @@ export class ZeroTrustProxy {
     return { ...this.metrics };
   }
 
+  /**
+   * Stop the proxy server
+   */
   async stop() {
     return new Promise((resolve) => {
       if (this.server) {
