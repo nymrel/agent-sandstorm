@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-sandstorm"
+version = "1.0.0"
+authors = [
+  { name = "Nymrel / JalenBuilds LLC", email = "contact@jalenbuilds.com" },
+]
+description = "Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["ai-agents", "security", "sandbox", "copy-on-write", "zero-trust", "rollback", "spend-limiter"]
+
+[project.urls]
+"Homepage" = "https://github.com/nymrel/agent-sandstorm"
+"Bug Tracker" = "https://github.com/nymrel/agent-sandstorm/issues"
+
+[project.scripts]
+sandstorm-py = "agent_sandstorm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["python"]

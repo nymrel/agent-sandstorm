@@ -1,0 +1,76 @@
+{
+  "name": "@nymrel/agent-sandstorm",
+  "version": "1.0.0",
+  "description": "Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine (Node.js/TypeScript + Python)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "sandstorm": "./bin/sandstorm.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./cow": {
+      "import": {
+        "types": "./dist/cow/index.d.ts",
+        "default": "./dist/cow/index.js"
+      }
+    },
+    "./proxy": {
+      "import": {
+        "types": "./dist/proxy/index.d.ts",
+        "default": "./dist/proxy/index.js"
+      }
+    },
+    "./limiter": {
+      "import": {
+        "types": "./dist/limiter/index.d.ts",
+        "default": "./dist/limiter/index.js"
+      }
+    },
+    "./audit": {
+      "import": {
+        "types": "./dist/audit/index.d.ts",
+        "default": "./dist/audit/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ./scripts/build.js",
+    "test": "node test/runner.js",
+    "test:node": "node test/runner.js",
+    "test:python": "python -m unittest discover -s python/tests"
+  },
+  "keywords": [
+    "agent-sandbox",
+    "zero-trust",
+    "copy-on-write",
+    "workspace-isolation",
+    "rollback-engine",
+    "secret-exfiltration-prevention",
+    "spend-limiter",
+    "ai-agents",
+    "autonomous-agents",
+    "nymrel",
+    "jalenbuilds"
+  ],
+  "author": "Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/nymrel/agent-sandstorm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nymrel/agent-sandstorm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nymrel/agent-sandstorm/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

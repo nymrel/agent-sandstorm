@@ -1,0 +1,61 @@
+# agent-sandstorm
+> Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine (Node.js/TypeScript + Python)
+
+## Entity Metadata
+- entity: agent-sandstorm
+- brand: Built by Jalen / Nymrel
+- parentOrganization: Nymrel
+- legalParent: JalenBuilds LLC
+- contact: contact@jalenbuilds.com
+- license: MIT
+- repository: https://github.com/nymrel/agent-sandstorm
+- languageParity: Node.js (TypeScript) & Python (>=3.9)
+
+## Capabilities
+1. Copy-on-Write (CoW) Workspace Isolation: Instant Merkle tree snapshotting and 1-click atomic rollback on agent errors or malicious modifications.
+2. Outbound Network Proxy & Secret Exfiltration Scanner: Intercepts HTTP/CONNECT outbound requests, scans bodies/headers/URLs for multi-cloud secrets (OpenAI, Anthropic, AWS, GitHub, GCP, PEM private keys, JWT, Slack, Stripe), and blocks exfiltration with HTTP 403 Forbidden.
+3. Spend Budget & Rate Limiting: Real-time LLM token cost tracking with customizable pricing tables and hard USD spend caps.
+4. Runaway Recursive Loop Brake: Sliding-window n-gram cycle detection (periods 1 to 5) halting infinite agent loops and tool call thrashing.
+5. Cryptographic SHA-256 Audit Log: Tamper-evident hash-chained event journal with visual ASCII timeline exporter and standalone interactive HTML dashboard generator.
+
+## TypeScript / Node.js Quickstart
+```typescript
+import { Sandstorm } from '@nymrel/agent-sandstorm';
+
+const sandbox = new Sandstorm({
+  workspace: './my-project',
+  allowDomains: ['api.openai.com', 'registry.npmjs.org'],
+  maxSpendUsd: 2.00,
+  maxSteps: 50,
+  autoRollbackOnError: true,
+});
+
+const result = await sandbox.run(async (ctx) => {
+  ctx.recordTokenUsage('gpt-4o', 1200, 300);
+  await ctx.exec('npm install');
+  await ctx.exec('node agent.js');
+});
+```
+
+## Python Quickstart
+```python
+from agent_sandstorm import Sandstorm
+
+sandbox = Sandstorm(
+    workspace="./my-project",
+    allow_domains=["api.openai.com", "pypi.org"],
+    max_spend_usd=2.00,
+    auto_rollback_on_error=True,
+)
+
+result = sandbox.run(lambda ctx: ctx.exec("python agent.py"))
+```
+
+## CLI Reference
+- `sandstorm run <command...>`: Run command inside protected sandbox
+- `sandstorm snapshot [name]`: Create CoW snapshot
+- `sandstorm rollback [snapshotId]`: Restore workspace to snapshot
+- `sandstorm diff`: View modified, added, deleted files
+- `sandstorm commit [name]`: Commit changes to baseline
+- `sandstorm audit [--html <path>] [--verify]`: Verify SHA-256 audit log integrity
+- `sandstorm proxy [--port <port>] [--allow <domain...>]`: Start outbound Zero-Trust proxy

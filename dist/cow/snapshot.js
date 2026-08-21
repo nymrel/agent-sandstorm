@@ -1,0 +1,141 @@
+/**
+ * @file snapshot.js
+ * @description Copy-on-Write workspace snapshotter & content-addressed object store
+ * @author Nymrel / JalenBuilds LLC <contact@jalenbuilds.com>
+ * @license MIT
+ */
+
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as crypto from 'node:crypto';
+
+export const DEFAULT_IGNORED_DIRS = new Set([
+  '.git',
+  '.sandstorm',
+  'node_modules',
+  'dist',
+  'build',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.cache',
+  '.next',
+  '.nuxt',
+  'coverage',
+]);
+
+export const DEFAULT_IGNORED_FILES = new Set([
+  '.DS_Store',
+  'Thumbs.db',
+]);
+
+export function computeFileSha256(filePath) {
+  const buffer = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+export function computeBufferSha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+export function computeTreeHash(files) {
+  const sortedPaths = Object.keys(files).sort();
+  const hasher = crypto.createHash('sha256');
+  for (const relPath of sortedPaths) {
+    const file = files[relPath];
+    if (file) {
+      hasher.update(`${relPath}:${file.sha256}:${file.size}\n`);
+    }
+  }
+  return hasher.digest('hex');
+}
+
+export function scanWorkspaceFiles(workspaceRoot, options = {}) {
+  const ignoredDirs = options.ignoredDirs || DEFAULT_IGNORED_DIRS;
+  const ignoredFiles = options.ignoredFiles || DEFAULT_IGNORED_FILES;
+  const result = {};
+
+  if (!fs.existsSync(workspaceRoot)) {
+    return result;
+  }
+
+  function walk(currentDir) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      const relativePath = path.relative(workspaceRoot, fullPath).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        if (ignoredDirs.has(entry.name) || options.customIgnorePatterns?.some(p => p.test(entry.name))) {
+          continue;
+        }
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        if (ignoredFiles.has(entry.name) || options.customIgnorePatterns?.some(p => p.test(entry.name))) {
+          continue;
+        }
+        try {
+          const stats = fs.statSync(fullPath);
+          const sha256 = computeFileSha256(fullPath);
+          result[relativePath] = {
+            path: fullPath,
+            relativePath,
+            sha256,
+            size: stats.size,
+            mtimeMs: stats.mtimeMs,
+            mode: stats.mode,
+          };
+        } catch {
+          // Ignore files that disappeared
+        }
+      }
+    }
+  }
+
+  walk(workspaceRoot);
+  return result;
+}
+
+export class ObjectStore {
+  constructor(sandstormDir) {
+    this.storeRoot = path.join(sandstormDir, 'objects');
+    fs.mkdirSync(this.storeRoot, { recursive: true });
+  }
+
+  getObjectPath(sha256) {
+    const prefix = sha256.substring(0, 2);
+    return path.join(this.storeRoot, prefix, sha256);
+  }
+
+  putFile(filePath, sha256) {
+    const dest = this.getObjectPath(sha256);
+    if (!fs.existsSync(dest)) {
+      const destDir = path.dirname(dest);
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(filePath, dest);
+    }
+  }
+
+  putBuffer(buffer, sha256) {
+    const dest = this.getObjectPath(sha256);
+    if (!fs.existsSync(dest)) {
+      const destDir = path.dirname(dest);
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.writeFileSync(dest, buffer);
+    }
+  }
+
+  getBuffer(sha256) {
+    const dest = this.getObjectPath(sha256);
+    if (!fs.existsSync(dest)) {
+      throw new Error(`Object not found in store: ${sha256}`);
+    }
+    return fs.readFileSync(dest);
+  }
+
+  hasObject(sha256) {
+    return fs.existsSync(this.getObjectPath(sha256));
+  }
+}
