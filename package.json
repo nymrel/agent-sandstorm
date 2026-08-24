@@ -43,10 +43,13 @@
   },
   "scripts": {
     "build": "node ./scripts/build.js",
-    "test": "node test/runner.js",
-    "test:node": "node test/runner.js",
+    "test": "npm run test:unit && npm run test:build-contract",
+    "test:unit": "node test/runner.js",
+    "test:node": "npm test",
+    "test:build-contract": "node --test test/build-contract.test.js",
     "test:python": "python -m unittest discover -s python/tests",
-    "prepublishOnly": "npm run build && npm test"
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm run build && npm test && npm run pack:check"
   },
   "keywords": [
     "agent-sandbox",
@@ -73,6 +76,9 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
   },
   "publishConfig": {
     "access": "public"
