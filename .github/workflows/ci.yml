@@ -35,8 +35,8 @@ jobs:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
 
-      - name: Install build dependency
-        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install exact build dependency without creating a lockfile
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
 
       - name: Build committed distributions
         run: npm run build
