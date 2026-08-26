@@ -41,6 +41,7 @@ This checklist is the release gate for both the npm and PyPI packages. A checked
 - [ ] Pin and review Python build-tool inputs and generate release SBOM/provenance evidence.
 - [ ] Resolve or explicitly accept every high-severity static-analysis finding.
 - [ ] Record green pull-request CI across the complete Node.js and Python matrices.
+- [ ] With explicit repository-settings approval, replace the overclaiming GitHub description and configure required CI checks/branch protection.
 - [ ] Complete an independent security review and attach the commit-scoped report.
 - [ ] Verify npm scope ownership, PyPI trusted-publisher configuration, protected release environments, and package-name availability without uploading a release.
 - [ ] Produce signed release notes, a support policy, and a rollback/yank procedure.
