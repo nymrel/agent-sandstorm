@@ -1,0 +1,56 @@
+# Release readiness
+
+Status: **hold — not production grade, not approved for distribution or marketing**
+
+This checklist is the release gate for both the npm and PyPI packages. A checked implementation item is not equivalent to a production approval; all required evidence must be present on the release commit.
+
+## Completed in the current hardening candidate
+
+- [x] Clean Node.js checkout has pinned TypeScript and Node type dependencies plus a lockfile.
+- [x] TypeScript build fails closed and no longer resolves a compiler from a sibling studio repository.
+- [x] Generated npm output includes the runtime `dist/types.js` module and declarations.
+- [x] npm package contents are allowlisted and verified without publishing.
+- [x] Python source tests run without an ambient `PYTHONPATH`.
+- [x] Python wheel contents exclude the repository test suite and are verified without publishing.
+- [x] A nonzero child command fails the enclosing Node.js and Python run by default and requests rollback.
+- [x] Rollback refuses symlinked restore paths and corrupted content-addressed objects instead of writing them.
+- [x] Child commands avoid a platform shell by default; shell execution requires explicit caller opt-in.
+- [x] Plain HTTP header secrets are blocked in both implementations.
+- [x] Exact domain entries no longer imply arbitrary subdomain access, and wildcard labels have explicit one-label semantics.
+- [x] Invalid budget, token, and custom-pricing inputs fail closed instead of reducing or corrupting counters.
+- [x] Per-run limiter state resets deterministically, configuration is validated, and disabling loop-pattern checks retains the step ceiling.
+- [x] Recognized credentials are redacted from command audit records and default failed-command error objects.
+- [x] Omitted allowlists are default-deny, and the Node.js CLI preserves child argument boundaries after `--`.
+- [x] Nested audit payloads and derived timestamps are integrity-checked, and report generators escape untrusted HTML content.
+- [x] Persisted audit logs continue one chain across runs and reject corrupted history before appending.
+- [x] The Python plain HTTP proxy forwards allowed requests instead of returning a synthetic success response.
+- [x] Registry publication requires a manual workflow dispatch, an exact existing semantic-version tag checkout, matching Node/Python versions, and an explicit `publish` confirmation.
+- [x] Public documentation states the actual pre-release boundary and removes unsupported benchmark and security guarantees.
+
+## Required before a production release
+
+- [ ] Replace in-process callbacks with an enforceable operating-system isolation boundary, or narrow the product contract so it never claims containment.
+- [ ] Make outbound policy non-bypassable for the supported execution mode, with DNS/IP validation and documented IPv6 behavior.
+- [ ] Decide whether HTTPS inspection is in scope; either implement a reviewed design or explicitly keep secret scanning out of encrypted tunnels.
+- [ ] Design and test crash-consistent rollback, including interruption during restore and recovery of partially applied operations.
+- [ ] Define and test symlink, hard-link, permission, race, large-file, ignored-path, and cross-filesystem behavior on Linux, macOS, and Windows.
+- [ ] Replace static model pricing and voluntary usage reports with versioned price inputs and provider-side budget guidance; never claim pre-charge enforcement without evidence.
+- [ ] Add bounded request-body handling, connection limits, timeouts, and proxy abuse tests.
+- [ ] Define audit-log durability, locking, retention, rotation, and external-authenticity behavior.
+- [ ] Pin every third-party GitHub Action to a reviewed immutable commit SHA.
+- [ ] Pin and review Python build-tool inputs and generate release SBOM/provenance evidence.
+- [ ] Resolve or explicitly accept every high-severity static-analysis finding.
+- [ ] Record green pull-request CI across the complete Node.js and Python matrices.
+- [ ] Complete an independent security review and attach the commit-scoped report.
+- [ ] Verify npm scope ownership, PyPI trusted-publisher configuration, protected release environments, and package-name availability without uploading a release.
+- [ ] Produce signed release notes, a support policy, and a rollback/yank procedure.
+- [ ] Obtain explicit release approval before creating a tag, publishing either package, creating a GitHub release, or beginning marketing.
+
+## Evidence required on the release commit
+
+- CI run URLs for Node.js, Python, package-contract, and security jobs
+- npm dry-run manifest and Python wheel/sdist inspection results
+- independent review report and resolved findings
+- threat-model version and compatibility matrix
+- release approval record and exact tag/version
+- post-publication install smoke tests from clean environments

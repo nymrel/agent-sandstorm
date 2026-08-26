@@ -1,14 +1,16 @@
 """
-proxy.py: Outbound Network Filter & Zero-Trust Secret Exfiltration Scanner (Python)
+proxy.py: Cooperative outbound proxy and inspectable-traffic secret scanner (Python)
 Copyright 2026 Nymrel / JalenBuilds LLC <contact@nymrel.com>
 MIT License
 """
 
 import re
+import ipaddress
 import socket
 import select
 import threading
 import urllib.parse
+import http.client
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Callable, Tuple, Any
@@ -16,7 +18,7 @@ from typing import List, Dict, Optional, Callable, Tuple, Any
 BUILTIN_SECRET_PATTERNS = [
     (
         "OpenAI API Key",
-        re.compile(r"sk-(?:proj-|svcacct-|admin-)?[a-zA-Z0-9_-]{20,}"),
+        re.compile(r"sk-(?!ant-)(?:proj-|svcacct-|admin-)?[a-zA-Z0-9_-]{20,}"),
         "OpenAI API secret key pattern",
         "critical",
     ),
@@ -130,14 +132,48 @@ class DomainFilter:
         self.blocked_regexes = [self._domain_to_regex(d) for d in (blocked_domains or [])]
 
     def _domain_to_regex(self, pattern: str) -> re.Pattern:
-        trimmed = pattern.strip().lower()
-        escaped = trimmed.replace(".", r"\.").replace("*", r"[a-zA-Z0-9_-]+")
-        return re.compile(rf"^(?:.+\.)?{escaped}$", re.IGNORECASE)
+        normalized = pattern.strip().strip("[]").rstrip(".").lower()
+        if not normalized:
+            raise ValueError("Domain patterns must not be empty")
+
+        try:
+            ipaddress.ip_address(normalized)
+            return re.compile(rf"^{re.escape(normalized)}$", re.IGNORECASE)
+        except ValueError:
+            pass
+
+        labels = normalized.split(".")
+        if any(not label for label in labels):
+            raise ValueError(f"Invalid domain pattern: {pattern}")
+
+        fragments = []
+        for label in labels:
+            if label == "*":
+                fragments.append(r"[a-z0-9_-]+")
+            elif re.fullmatch(r"[a-z0-9_-]+", label):
+                fragments.append(re.escape(label))
+            else:
+                raise ValueError(f"Invalid domain label '{label}' in pattern '{pattern}'")
+
+        joined = r"\.".join(fragments)
+        return re.compile(rf"^{joined}$", re.IGNORECASE)
+
+    def _normalize_host(self, host_header: str) -> str:
+        value = host_header.strip()
+        if not value:
+            return ""
+        try:
+            parsed = urllib.parse.urlsplit(f"//{value}")
+            return (parsed.hostname or "").rstrip(".").lower()
+        except ValueError:
+            return ""
 
     def is_allowed(self, host_header: str) -> bool:
         if not host_header:
             return False
-        clean_host = host_header.split(":")[0].lower()
+        clean_host = self._normalize_host(host_header)
+        if not clean_host:
+            return False
 
         # Check denylist
         for regex in self.blocked_regexes:
@@ -166,7 +202,7 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             self.send_response(403, "Forbidden")
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            body = b'{"error":"ERR_SANDSTORM_DOMAIN_BLOCKED","policy":"Zero-Trust Domain Allowlist"}\n'
+            body = b'{"error":"ERR_SANDSTORM_DOMAIN_BLOCKED","policy":"Sandstorm Domain Allowlist"}\n'
             self.wfile.write(body)
             return
 
@@ -207,7 +243,11 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_http_forward(self):
         parsed = urllib.parse.urlparse(self.path)
-        target_host = self.headers.get("Host") or parsed.netloc
+        target_host = (
+            parsed.netloc.rsplit("@", 1)[-1]
+            if parsed.scheme and parsed.netloc
+            else self.headers.get("Host", "")
+        )
 
         if not self.server.filter.is_allowed(target_host):
             self.send_response(403)
@@ -223,6 +263,12 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
                 self._block_secret(url_secrets[0], target_host)
                 return
 
+            for _, header_value in self.headers.items():
+                header_secrets = self.server.scanner.scan(header_value, "header")
+                if header_secrets:
+                    self._block_secret(header_secrets[0], target_host)
+                    return
+
         # Read body if present
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length) if content_length > 0 else b""
@@ -237,10 +283,48 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok","sandstorm_verified":true}\n')
+        scheme = parsed.scheme.lower() if parsed.scheme else "http"
+        hostname = parsed.hostname or target_host.split(":")[0]
+        port = parsed.port or (443 if scheme == "https" else 80)
+        target_path = urllib.parse.urlunparse(("", "", parsed.path or "/", "", parsed.query, ""))
+        connection_type = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        connection = connection_type(hostname, port, timeout=30)
+
+        hop_by_hop = {
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+        }
+        forward_headers = {
+            name: value
+            for name, value in self.headers.items()
+            if name.lower() not in hop_by_hop and name.lower() != "host"
+        }
+        forward_headers["Host"] = target_host
+
+        try:
+            connection.request(self.command, target_path, body=body or None, headers=forward_headers)
+            upstream = connection.getresponse()
+            response_body = upstream.read()
+            self.send_response(upstream.status, upstream.reason)
+            for name, value in upstream.getheaders():
+                if name.lower() not in hop_by_hop and name.lower() != "content-length":
+                    self.send_header(name, value)
+            self.send_header("Content-Length", str(len(response_body)))
+            self.end_headers()
+            self.wfile.write(response_body)
+        except Exception:
+            self.send_response(502, "Bad Gateway")
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error":"ERR_SANDSTORM_BAD_GATEWAY"}\n')
+        finally:
+            connection.close()
 
     def _block_secret(self, detection: SecretDetection, target_host: str):
         if self.server.on_secret_detected:
@@ -267,6 +351,7 @@ class ZeroTrustProxy:
         on_secret_detected: Optional[Callable[[SecretDetection], None]] = None,
     ):
         self.host = host
+        self._requested_port = port
         self.port = port
         self.scan_payloads = scan_payloads
         self.scanner = SecretScanner()
@@ -276,7 +361,7 @@ class ZeroTrustProxy:
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> Tuple[str, int]:
-        self.server = HTTPServer((self.host, self.port), ProxyRequestHandler)
+        self.server = HTTPServer((self.host, self._requested_port), ProxyRequestHandler)
         # Attach configuration to server instance
         self.server.filter = self.filter
         self.server.scanner = self.scanner
@@ -293,8 +378,13 @@ class ZeroTrustProxy:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=5)
+        self._thread = None
 
     def get_env(self) -> Dict[str, str]:
+        if not self.server:
+            raise RuntimeError("Proxy server is not running")
         proxy_url = f"http://{self.host}:{self.port}"
         return {
             "HTTP_PROXY": proxy_url,

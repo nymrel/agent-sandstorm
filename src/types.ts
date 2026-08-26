@@ -163,7 +163,11 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   shell?: string | boolean;
+  /** Return a nonzero result instead of failing the enclosing sandbox run. */
+  allowNonZeroExit?: boolean;
 }
+
+export type CommandInput = string | readonly string[];
 
 export interface ExecResult {
   exitCode: number;
@@ -174,7 +178,7 @@ export interface ExecResult {
 
 export interface SandboxContext {
   workspace: string;
-  exec: (command: string, options?: ExecOptions) => Promise<ExecResult>;
+  exec: (command: CommandInput, options?: ExecOptions) => Promise<ExecResult>;
   env: Record<string, string>;
   recordTokenUsage: (model: string, promptTokens: number, completionTokens: number) => { currentSpendUsd: number; exceeded: boolean };
   recordStep: (actionName: string, detail?: string) => void;

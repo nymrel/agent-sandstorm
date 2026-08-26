@@ -10,7 +10,7 @@ import type { SecretPattern, SecretDetection } from '../types.js';
 export const BUILTIN_SECRET_PATTERNS: SecretPattern[] = [
   {
     name: 'OpenAI API Key',
-    regex: /sk-(?:proj-|svcacct-|admin-)?[a-zA-Z0-9_-]{20,}/g,
+    regex: /sk-(?!ant-)(?:proj-|svcacct-|admin-)?[a-zA-Z0-9_-]{20,}/g,
     description: 'OpenAI API secret key pattern',
     severity: 'critical',
   },
@@ -73,6 +73,11 @@ export function redactSecret(secret: string): string {
   return `${prefix}...[REDACTED]...${suffix}`;
 }
 
+function reusableGlobalRegex(regex: RegExp): RegExp {
+  const flags = [...regex.flags].filter(flag => flag !== 'g' && flag !== 'y').join('') + 'g';
+  return new RegExp(regex.source, flags);
+}
+
 export class SecretScanner {
   private readonly patterns: SecretPattern[];
 
@@ -94,11 +99,10 @@ export class SecretScanner {
     const detections: SecretDetection[] = [];
 
     for (const pattern of this.patterns) {
-      // Reset regex state for global regexes
-      pattern.regex.lastIndex = 0;
-      let match: RegExpExecArray | null;
-
-      while ((match = pattern.regex.exec(text)) !== null) {
+      // Clone caller-provided patterns as non-sticky globals so a non-global
+      // custom RegExp cannot loop forever and every match is inspected.
+      const regex = reusableGlobalRegex(pattern.regex);
+      for (const match of text.matchAll(regex)) {
         const matched = match[0];
         detections.push({
           patternName: pattern.name,
@@ -122,8 +126,7 @@ export class SecretScanner {
     if (!text || typeof text !== 'string') return text;
     let redacted = text;
     for (const pattern of this.patterns) {
-      pattern.regex.lastIndex = 0;
-      redacted = redacted.replace(pattern.regex, (match) => redactSecret(match));
+      redacted = redacted.replace(reusableGlobalRegex(pattern.regex), (match) => redactSecret(match));
     }
     return redacted;
   }

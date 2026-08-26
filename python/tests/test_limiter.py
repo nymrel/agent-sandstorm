@@ -8,6 +8,8 @@ from agent_sandstorm.limiter import (
     LoopDetector,
     BudgetExceededError,
     RunawayLoopError,
+    StepLimitExceededError,
+    ExecutionLimiter,
 )
 
 
@@ -20,6 +22,20 @@ class TestLimiter(unittest.TestCase):
         with self.assertRaises(BudgetExceededError):
             tracker.record_usage("gpt-4o", 0, 50000)
 
+    def test_invalid_budget_inputs_fail_closed(self):
+        with self.assertRaises(ValueError):
+            BudgetTracker(max_spend_usd=-1)
+        with self.assertRaises(ValueError):
+            BudgetTracker(custom_pricing={"unsafe": (-1.0, 0.0)})
+
+        tracker = BudgetTracker()
+        with self.assertRaises(ValueError):
+            tracker.record_usage("gpt-4o", -1, 0)
+        with self.assertRaises(ValueError):
+            LoopDetector(loop_threshold=0)
+        with self.assertRaises(ValueError):
+            ExecutionLimiter(max_duration_ms=-1)
+
     def test_loop_detector(self):
         detector = LoopDetector(loop_threshold=3)
         detector.record_action("cat file.txt")
@@ -27,6 +43,15 @@ class TestLimiter(unittest.TestCase):
 
         with self.assertRaises(RunawayLoopError):
             detector.record_action("cat file.txt")
+
+        opt_out = ExecutionLimiter(loop_detection=False, loop_threshold=2, max_steps=3)
+        opt_out.record_step("repeat")
+        opt_out.record_step("repeat")
+        opt_out.record_step("repeat")
+        with self.assertRaises(StepLimitExceededError):
+            opt_out.record_step("repeat")
+        opt_out.reset()
+        self.assertEqual(opt_out.get_summary()["steps_executed"], 0)
 
 
 if __name__ == "__main__":

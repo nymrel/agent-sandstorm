@@ -7,6 +7,7 @@ MIT License
 import sys
 import os
 import argparse
+import shlex
 from .sandbox import Sandstorm
 from .cow import CoWSnapshotManager
 from .audit import AuditLogger, export_timeline_ascii, generate_html_report
@@ -18,17 +19,18 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(
         prog="sandstorm-py",
-        description="Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine (Nymrel)",
+        description="Experimental agent execution guardrails and best-effort workspace recovery (Nymrel)",
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # run command
-    run_parser = subparsers.add_parser("run", help="Run a command inside zero-trust sandbox")
+    run_parser = subparsers.add_parser("run", help="Run a command with cooperative proxying and rollback on detected failure")
     run_parser.add_argument("cmd", nargs="+", help="Command to run")
     run_parser.add_argument("--workspace", default=os.getcwd(), help="Target workspace")
     run_parser.add_argument("--allow", action="append", help="Allowed domain (can be repeated)")
     run_parser.add_argument("--max-spend", type=float, default=None, help="Max spend USD")
     run_parser.add_argument("--no-rollback", action="store_true", help="Disable auto rollback on error")
+    run_parser.add_argument("--shell", action="store_true", help="Execute through the platform shell (explicitly less safe)")
 
     # snapshot command
     snap_parser = subparsers.add_parser("snapshot", help="Create CoW workspace snapshot")
@@ -55,21 +57,31 @@ def main(argv=None):
         return 0
 
     if args.command == "run":
-        cmd_str = " ".join(args.cmd)
-        print(f"\n🛡️  SANDSTORM (PY): Executing '{cmd_str}' in {args.workspace}\n")
+        if args.shell:
+            command = " ".join(args.cmd)
+        elif len(args.cmd) == 1:
+            command = shlex.split(args.cmd[0], posix=os.name != "nt")
+        else:
+            command = args.cmd
+        display_command = command if isinstance(command, str) else shlex.join(command)
+        print(f"\n🛡️  SANDSTORM (PY): Executing '{display_command}' in {args.workspace}\n")
         sandbox = Sandstorm(
             workspace=args.workspace,
             allow_domains=args.allow,
             max_spend_usd=args.max_spend,
             auto_rollback_on_error=not args.no_rollback,
         )
-        res = sandbox.run(lambda ctx: ctx.exec(cmd_str))
+        res = sandbox.run(lambda ctx: ctx.exec(command, shell=args.shell))
         if res.success:
             print(f"\n✅ Execution succeeded ({res.duration_ms:.1f}ms)")
         else:
             print(f"\n❌ Execution failed: {res.error}")
             if res.rollback_performed:
-                print("🔄 Automatic CoW Rollback performed.")
+                if res.rollback_summary and res.rollback_summary.success:
+                    print("🔄 Best-effort rollback completed for captured files.")
+                else:
+                    detail = res.rollback_summary.error if res.rollback_summary else "unknown error"
+                    print(f"🔄 Rollback attempt was incomplete: {detail}")
         print("\n" + sandbox.get_timeline())
         return 0 if res.success else 1
 

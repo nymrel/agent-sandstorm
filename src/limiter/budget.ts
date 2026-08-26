@@ -34,6 +34,24 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPricing> = {
   'default': { promptCostPer1k: 0.002, completionCostPer1k: 0.006 },
 };
 
+function validateLimit(name: string, value: number, integer = false): number {
+  if (value < 0 || Number.isNaN(value) || (value !== Infinity && !Number.isFinite(value))) {
+    throw new RangeError(`${name} must be a nonnegative number or Infinity`);
+  }
+  if (integer && value !== Infinity && !Number.isInteger(value)) {
+    throw new RangeError(`${name} must be a nonnegative integer or Infinity`);
+  }
+  return value;
+}
+
+function validatePricing(pricing: Record<string, ModelPricing>): void {
+  for (const [model, rates] of Object.entries(pricing)) {
+    if (!model.trim()) throw new TypeError('Model pricing keys must not be empty');
+    validateLimit(`Prompt price for ${model}`, rates.promptCostPer1k);
+    validateLimit(`Completion price for ${model}`, rates.completionCostPer1k);
+  }
+}
+
 export class BudgetTracker {
   private totalSpendUsd = 0;
   private totalTokens = 0;
@@ -48,9 +66,10 @@ export class BudgetTracker {
     maxTotalTokens?: number;
     customPricing?: Record<string, ModelPricing>;
   } = {}) {
-    this.maxSpendUsd = options.maxSpendUsd ?? Infinity;
-    this.maxTotalTokens = options.maxTotalTokens ?? Infinity;
+    this.maxSpendUsd = validateLimit('maxSpendUsd', options.maxSpendUsd ?? Infinity);
+    this.maxTotalTokens = validateLimit('maxTotalTokens', options.maxTotalTokens ?? Infinity, true);
     this.pricing = { ...DEFAULT_MODEL_PRICING, ...options.customPricing };
+    validatePricing(this.pricing);
   }
 
   /**
@@ -61,6 +80,12 @@ export class BudgetTracker {
     promptTokens: number,
     completionTokens: number
   ): { currentSpendUsd: number; totalTokens: number; exceeded: boolean } {
+    if (typeof model !== 'string' || !model.trim()) {
+      throw new TypeError('model must be a nonempty string');
+    }
+    validateLimit('promptTokens', promptTokens, true);
+    validateLimit('completionTokens', completionTokens, true);
+
     const normalizedModel = model.toLowerCase();
     const rates = this.pricing[normalizedModel] || this.pricing['default']!;
 

@@ -1,0 +1,7 @@
+include CHANGELOG.md
+include LICENSE
+include README.md
+include RELEASE_READINESS.md
+include SECURITY.md
+recursive-include python/agent_sandstorm *.py
+recursive-include python/tests test_*.py

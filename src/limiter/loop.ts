@@ -37,6 +37,14 @@ export interface LoopDetectorOptions {
   windowSize?: number;
 }
 
+function validateIntegerLimit(name: string, value: number, minimum: number): number {
+  if (value === Infinity && name === 'maxSteps') return value;
+  if (!Number.isInteger(value) || value < minimum) {
+    throw new RangeError(`${name} must be an integer greater than or equal to ${minimum}`);
+  }
+  return value;
+}
+
 export class LoopDetector {
   private readonly maxSteps: number;
   private readonly loopThreshold: number;
@@ -45,16 +53,16 @@ export class LoopDetector {
   private totalSteps = 0;
 
   constructor(options: LoopDetectorOptions = {}) {
-    this.maxSteps = options.maxSteps ?? 100;
-    this.loopThreshold = options.loopThreshold ?? 3;
-    this.windowSize = options.windowSize ?? 20;
+    this.maxSteps = validateIntegerLimit('maxSteps', options.maxSteps ?? 100, 0);
+    this.loopThreshold = validateIntegerLimit('loopThreshold', options.loopThreshold ?? 3, 1);
+    this.windowSize = validateIntegerLimit('windowSize', options.windowSize ?? 20, 1);
   }
 
   /**
    * Record an action (e.g. tool call signature, shell command, file target)
    * and check for runaway recursive loops.
    */
-  public recordAction(actionIdentifier: string, detail?: string): void {
+  public recordAction(actionIdentifier: string, detail?: string, detectLoops = true): void {
     this.totalSteps++;
 
     if (this.totalSteps > this.maxSteps) {
@@ -72,7 +80,7 @@ export class LoopDetector {
       this.actionHistory.shift();
     }
 
-    this.checkLoops();
+    if (detectLoops) this.checkLoops();
   }
 
   /**

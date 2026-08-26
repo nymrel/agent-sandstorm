@@ -29,6 +29,7 @@ class TestCoW(unittest.TestCase):
         snap = self.cow.create_snapshot("initial")
         self.assertEqual(snap.file_count, 2)
         self.assertTrue(bool(snap.tree_hash))
+        self.assertIsNone(self.cow.get_snapshot("../../outside"))
 
         # Mutate
         file3 = os.path.join(self.tmp_dir, "extra.py")
@@ -64,6 +65,42 @@ class TestCoW(unittest.TestCase):
         self.assertTrue(os.path.exists(self.file2))
         with open(self.file1, "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), "print('hello world')\n")
+
+    def test_rollback_refuses_symlink_parent_and_corrupt_object(self):
+        outside_dir = tempfile.mkdtemp(prefix="sandstorm-py-cow-outside-")
+        self.addCleanup(shutil.rmtree, outside_dir, True)
+        protected_dir = os.path.join(self.tmp_dir, "protected")
+        protected_file = os.path.join(protected_dir, "value.txt")
+        outside_file = os.path.join(outside_dir, "value.txt")
+        os.mkdir(protected_dir)
+        with open(protected_file, "w", encoding="utf-8") as file:
+            file.write("captured\n")
+        with open(outside_file, "w", encoding="utf-8") as file:
+            file.write("outside\n")
+
+        symlink_snapshot = self.cow.create_snapshot("before-symlink-swap")
+        shutil.rmtree(protected_dir)
+        os.symlink(outside_dir, protected_dir, target_is_directory=True)
+        symlink_rollback = self.cow.rollback(symlink_snapshot.id)
+        self.assertFalse(symlink_rollback.success)
+        with open(outside_file, encoding="utf-8") as file:
+            self.assertEqual(file.read(), "outside\n")
+
+        os.unlink(protected_dir)
+        os.mkdir(protected_dir)
+        with open(protected_file, "w", encoding="utf-8") as file:
+            file.write("object-original\n")
+        object_snapshot = self.cow.create_snapshot("before-object-corruption")
+        captured = object_snapshot.files["protected/value.txt"]
+        with open(self.cow.object_store.get_object_path(captured["sha256"]), "w", encoding="utf-8") as file:
+            file.write("corrupted-object\n")
+        with open(protected_file, "w", encoding="utf-8") as file:
+            file.write("workspace-modified\n")
+
+        corrupt_rollback = self.cow.rollback(object_snapshot.id)
+        self.assertFalse(corrupt_rollback.success)
+        with open(protected_file, encoding="utf-8") as file:
+            self.assertEqual(file.read(), "workspace-modified\n")
 
 
 if __name__ == "__main__":

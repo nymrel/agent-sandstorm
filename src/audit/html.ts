@@ -10,6 +10,15 @@ import * as path from 'node:path';
 import type { AuditEvent, AuditIntegrityResult } from '../types.js';
 import { formatEventSummary } from './timeline.js';
 
+function escapeHtml(value: unknown): string {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 export function generateHtmlReport(
   events: AuditEvent[],
   integrity: AuditIntegrityResult,
@@ -20,11 +29,9 @@ export function generateHtmlReport(
     rollbackPerformed?: boolean;
   } = { workspace: '' }
 ): string {
-  const eventsJson = JSON.stringify(events, null, 2);
   const criticalCount = events.filter(e => e.severity === 'critical').length;
   const errorCount = events.filter(e => e.severity === 'error').length;
   const warnCount = events.filter(e => e.severity === 'warn').length;
-  const infoCount = events.filter(e => e.severity === 'info').length;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -242,13 +249,13 @@ export function generateHtmlReport(
     <header>
       <div class="logo-badge">
         <div>
-          <h1>Sandstorm Security Audit</h1>
-          <div class="subtitle">Nymrel Zero-Trust Agent Execution Runtime</div>
+          <h1>Sandstorm Execution Audit</h1>
+          <div class="subtitle">Nymrel experimental agent guardrail runtime</div>
         </div>
       </div>
       <div>
         <div class="status-badge ${integrity.valid ? 'verified' : 'unverified'}">
-          <span>${integrity.valid ? '✓ Cryptographically Verified' : '⚠ Tamper Detected'}</span>
+          <span>${integrity.valid ? '✓ Hash Chain Intact' : '⚠ Hash Chain Mismatch'}</span>
         </div>
       </div>
     </header>
@@ -270,14 +277,14 @@ export function generateHtmlReport(
         <div class="card-meta">${metadata.totalTokens || 0} tokens tracked</div>
       </div>
       <div class="card">
-        <div class="card-title">Workspace Integrity</div>
-        <div class="card-value">${metadata.rollbackPerformed ? 'Reverted' : 'Preserved'}</div>
-        <div class="card-meta">${metadata.workspace || 'Active'}</div>
+        <div class="card-title">Rollback Status</div>
+        <div class="card-value">${metadata.rollbackPerformed ? 'Performed' : 'Not performed'}</div>
+        <div class="card-meta">${escapeHtml(metadata.workspace || 'Active')}</div>
       </div>
     </div>
 
     <div class="controls">
-      <h2>Cryptographic Event Journal</h2>
+      <h2>Hash-Chained Event Journal</h2>
       <input type="text" id="searchInput" class="search-input" placeholder="Search events, types, payloads..." onkeyup="filterEvents()">
     </div>
 
@@ -296,18 +303,18 @@ export function generateHtmlReport(
         <tbody>
           ${events.map((ev) => `
             <tr>
-              <td class="mono">${ev.index}</td>
-              <td class="mono">${ev.isoTime.substring(11, 23)}</td>
-              <td><span class="tag ${ev.severity}">${ev.severity}</span></td>
-              <td class="mono"><strong>${ev.type}</strong></td>
+              <td class="mono">${escapeHtml(ev.index)}</td>
+              <td class="mono">${escapeHtml(ev.isoTime.substring(11, 23))}</td>
+              <td><span class="tag ${escapeHtml(ev.severity)}">${escapeHtml(ev.severity)}</span></td>
+              <td class="mono"><strong>${escapeHtml(ev.type)}</strong></td>
               <td>
-                <div>${formatEventSummary(ev)}</div>
+                <div>${escapeHtml(formatEventSummary(ev))}</div>
                 <details style="margin-top:0.25rem; font-size:0.75rem; color:var(--text-muted);">
                   <summary>raw payload</summary>
-                  <pre class="mono" style="background:#F4F0E6; padding:0.5rem; border-radius:4px; margin-top:0.25rem; overflow-x:auto;">${JSON.stringify(ev.payload, null, 2)}</pre>
+                  <pre class="mono" style="background:#F4F0E6; padding:0.5rem; border-radius:4px; margin-top:0.25rem; overflow-x:auto;">${escapeHtml(JSON.stringify(ev.payload, null, 2))}</pre>
                 </details>
               </td>
-              <td><span class="hash-badge" title="${ev.hash}">${ev.hash.substring(0, 12)}...</span></td>
+              <td><span class="hash-badge" title="${escapeHtml(ev.hash)}">${escapeHtml(ev.hash.substring(0, 12))}...</span></td>
             </tr>
           `).join('')}
         </tbody>
@@ -315,7 +322,7 @@ export function generateHtmlReport(
     </div>
 
     <footer>
-      Built by Nymrel · Parent Organization: JalenBuilds LLC · Zero-Trust Machine Execution Engine
+      Built by Nymrel · Legal entity: JalenBuilds LLC · Experimental guardrail runtime
     </footer>
   </div>
 

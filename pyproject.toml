@@ -4,22 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-sandstorm"
-version = "1.0.0"
+version = "0.1.0"
 authors = [
   { name = "Nymrel / JalenBuilds LLC", email = "contact@nymrel.com" },
 ]
-description = "Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine"
+description = "Experimental agent execution guardrails, workspace recovery, cooperative proxying, and audit utilities"
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
 classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
     "Topic :: Security",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -29,9 +29,14 @@ keywords = ["ai-agents", "security", "sandbox", "copy-on-write", "zero-trust", "
 [project.urls]
 "Homepage" = "https://github.com/nymrel/agent-sandstorm"
 "Bug Tracker" = "https://github.com/nymrel/agent-sandstorm/issues"
+"Changelog" = "https://github.com/nymrel/agent-sandstorm/blob/main/CHANGELOG.md"
+"Security" = "https://github.com/nymrel/agent-sandstorm/blob/main/SECURITY.md"
 
 [project.scripts]
 sandstorm-py = "agent_sandstorm.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]
+include = ["agent_sandstorm*"]
+exclude = ["tests*"]
+namespaces = false

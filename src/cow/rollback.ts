@@ -1,6 +1,6 @@
 /**
  * @file rollback.ts
- * @description Instant 1-click atomic rollback engine for pristine workspace restoration
+ * @description Best-effort rollback for captured regular workspace files
  * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
@@ -8,7 +8,28 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SnapshotMetadata, RollbackResult, WorkspaceDiff } from '../types.js';
-import { scanWorkspaceFiles, ObjectStore, computeTreeHash } from './snapshot.js';
+import { scanWorkspaceFiles, ObjectStore } from './snapshot.js';
+
+function assertSafeRestoreTarget(workspaceRoot: string, targetPath: string): void {
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const resolvedTarget = path.resolve(targetPath);
+  const relative = path.relative(resolvedRoot, resolvedTarget);
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) {
+    throw new Error(`Refusing unsafe rollback target outside the workspace: ${targetPath}`);
+  }
+
+  let current = resolvedRoot;
+  for (const part of relative.split(path.sep)) {
+    current = path.join(current, part);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Refusing rollback through symbolic link: ${path.relative(resolvedRoot, current)}`);
+      }
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+}
 
 export function computeWorkspaceDiff(
   workspaceRoot: string,
@@ -84,6 +105,7 @@ export function executeRollback(
 
       if (!curFile) {
         // File was deleted; restore it
+        assertSafeRestoreTarget(workspaceRoot, targetPath);
         const targetDir = path.dirname(targetPath);
         fs.mkdirSync(targetDir, { recursive: true });
         const content = objectStore.getBuffer(baseFile.sha256);
@@ -91,6 +113,7 @@ export function executeRollback(
         restoredFiles.push(relPath);
       } else if (curFile.sha256 !== baseFile.sha256) {
         // File was modified; revert it
+        assertSafeRestoreTarget(workspaceRoot, targetPath);
         const content = objectStore.getBuffer(baseFile.sha256);
         fs.writeFileSync(targetPath, content, { mode: baseFile.mode });
         revertedFiles.push(relPath);

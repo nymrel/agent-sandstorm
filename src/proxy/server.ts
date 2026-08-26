@@ -1,6 +1,6 @@
 /**
  * @file server.ts
- * @description High-performance Zero-Trust HTTP/CONNECT Proxy Server
+ * @description Cooperative HTTP/CONNECT proxy with a default-deny domain policy
  * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
@@ -57,7 +57,7 @@ export class ZeroTrustProxy {
       });
 
       this.server.on('connect', (req, clientSocket, head) => {
-        this.handleHttpsConnect(req, clientSocket, head);
+        this.handleHttpsConnect(req, clientSocket as net.Socket, head);
       });
 
       this.server.on('error', (err) => {
@@ -100,7 +100,7 @@ export class ZeroTrustProxy {
     if (!this.filter.isAllowed(targetHost)) {
       this.metrics.blockedRequests++;
       this.config.onBlockedDomain?.(targetHost, rawUrl);
-      this.sendBlockedResponse(res, `Domain '${targetHost}' is not in the Zero-Trust allowlist.`);
+      this.sendBlockedResponse(res, `Domain '${targetHost}' is not in the Sandstorm allowlist.`);
       return;
     }
 
@@ -112,14 +112,14 @@ export class ZeroTrustProxy {
         return;
       }
 
-      for (const [headerName, headerVal] of Object.entries(req.headers)) {
-        if (typeof headerVal === 'string') {
-          // Check Authorization and custom headers
-          const headerSecrets = this.scanner.scan(headerVal, 'header');
+      for (const headerVal of Object.values(req.headers)) {
+        const values = Array.isArray(headerVal) ? headerVal : [headerVal];
+        for (const value of values) {
+          if (typeof value !== 'string') continue;
+          const headerSecrets = this.scanner.scan(value, 'header');
           if (headerSecrets.length > 0) {
-            // Note: If domain is allowed (e.g. api.openai.com) and header is Authorization,
-            // we allow targeted authorization header to the exact allowed provider,
-            // but block cross-domain exfiltration or general secret leakage in unexpected headers.
+            this.handleSecretViolation(res, headerSecrets, targetHost);
+            return;
           }
         }
       }
@@ -206,7 +206,7 @@ export class ZeroTrustProxy {
     if (!hostname || !this.filter.isAllowed(hostname)) {
       this.metrics.blockedRequests++;
       this.config.onBlockedDomain?.(hostname || 'unknown', targetUrl);
-      const msg = `HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{"error":"ERR_SANDSTORM_BLOCKED","reason":"Domain '${hostname}' is not permitted by Zero-Trust policy."}\r\n`;
+      const msg = `HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{"error":"ERR_SANDSTORM_BLOCKED","reason":"Domain '${hostname}' is not permitted by the Sandstorm allowlist."}\r\n`;
       clientSocket.write(msg);
       clientSocket.end();
       return;
@@ -264,7 +264,7 @@ export class ZeroTrustProxy {
       JSON.stringify({
         error: 'ERR_SANDSTORM_DOMAIN_BLOCKED',
         reason,
-        policy: 'Zero-Trust Domain Allowlist',
+        policy: 'Sandstorm Domain Allowlist',
       })
     );
   }
@@ -297,6 +297,11 @@ export class ZeroTrustProxy {
     return { ...this.metrics };
   }
 
+  /** Redact recognized credentials before text is persisted or displayed. */
+  public redactForAudit(text: string): string {
+    return this.scanner.redactAll(text);
+  }
+
   /**
    * Stop the proxy server
    */
@@ -305,6 +310,7 @@ export class ZeroTrustProxy {
       if (this.server) {
         this.server.close(() => {
           this.server = null;
+          this.port = 0;
           resolve();
         });
       } else {

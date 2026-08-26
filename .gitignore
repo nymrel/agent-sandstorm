@@ -10,5 +10,6 @@ __pycache__/
 .coverage
 coverage/
 .env
+.sandstorm/
 .DS_Store
 *.log

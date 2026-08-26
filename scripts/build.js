@@ -5,8 +5,8 @@
  * @license MIT
  *
  * Contract:
- * - TypeScript is resolved deterministically: repo-local install first, then the
- *   explicit studio fallback checkout. No compiler => clear nonzero failure.
+ * - TypeScript is resolved deterministically from this repository's dependency
+ *   tree. No compiler => clear nonzero failure.
  * - Compilation runs through an argv-based child process (no shell string).
  * - Any failure (missing compiler, spawn error, TypeScript errors, empty output)
  *   exits nonzero, never prints a success message, and leaves no `dist` behind
@@ -48,12 +48,9 @@ function cleanupActiveStagingDir() {
 /** Deterministic compiler candidate list; first existing entry wins. */
 function compilerCandidates(rootDir) {
   return [
-    // Preferred: repo-local TypeScript install.
+    // Self-contained clean checkouts must never depend on a sibling studio repo.
     path.join(rootDir, 'node_modules', 'typescript', 'bin', 'tsc'),
     path.join(rootDir, 'node_modules', 'typescript', 'lib', 'tsc.js'),
-    // Explicit studio fallback: shared TypeScript checkout next to this repo.
-    // Its absence must fail closed (see resolveCompiler + runBuild).
-    path.resolve(rootDir, '..', 'nymrel-swarm-protocol', 'node_modules', 'typescript', 'bin', 'tsc'),
   ];
 }
 

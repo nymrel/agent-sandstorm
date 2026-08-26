@@ -10,6 +10,7 @@ import { runProxyTests } from './proxy.test.js';
 import { runLimiterTests } from './limiter.test.js';
 import { runAuditTests } from './audit.test.js';
 import { runE2eTests } from './e2e.test.js';
+import { runCliTests } from './cli.test.js';
 
 async function main() {
   const startTime = Date.now();
@@ -27,6 +28,7 @@ async function main() {
     { name: 'Spend Budget Limiter & Loop Circuit Breaker', fn: runLimiterTests },
     { name: 'Cryptographic Audit & Visual Timeline', fn: runAuditTests },
     { name: 'End-to-End Sandbox & Auto-Rollback', fn: runE2eTests },
+    { name: 'CLI argument and limit contracts', fn: runCliTests },
   ];
 
   for (const suite of suites) {
@@ -44,7 +46,7 @@ async function main() {
   console.log('============================================================');
   if (failed === 0) {
     console.log(`🎉 ALL SUITES PASSED! (${passed}/${passed} passed in ${duration}s)`);
-    console.log('   Zero-Trust Sandbox & CoW Isolation Engine 100% Green.');
+    console.log('   Current automated guardrail checks are green.');
     console.log('============================================================\n');
     process.exit(0);
   } else {

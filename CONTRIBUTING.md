@@ -1,35 +1,34 @@
 # Contributing to agent-sandstorm
 
-Thank you for contributing to **agent-sandstorm**! We welcome bug fixes, performance optimizations, secret detection patterns, and documentation improvements.
+The project is pre-release. Contributions should reduce a documented release blocker, add a regression test, or make the security boundary more precise.
 
-## Development Setup
+## Development setup
 
-### Node.js / TypeScript
-1. Ensure Node.js `>= 18.0.0` is installed.
-2. Clone repository:
-   ```bash
-   git clone https://github.com/nymrel/agent-sandstorm.git
-   cd agent-sandstorm
-   ```
-3. Run test suite:
-   ```bash
-   node test/runner.js
-   ```
+Node.js 18+ and Python 3.9+ are required.
 
-### Python
-1. Ensure Python `>= 3.9` is installed.
-2. Run test suite:
-   ```bash
-   python -m unittest discover -s python/tests
-   ```
+```bash
+npm ci
+npm run test:node
+npm run check:package
+python scripts/test_python.py
+```
 
-## Code Guidelines
-- Zero runtime dependencies: the core engine relies on native platform and standard library capabilities for maximum speed, security, and portability.
-- Complete parity: any feature added to the TypeScript engine should have corresponding implementation in the Python engine.
-- Every PR must include unit tests verifying the behavior.
+To validate the Python distribution:
 
-## Pull Request Checklist
-- [ ] Tests pass in both Node.js (`node test/runner.js`) and Python (`python -m unittest discover -s python/tests`).
-- [ ] Types and declarations are updated.
-- [ ] Documentation reflects new options or commands.
-- [ ] Dual-Audience verification (`parentOrganization: Nymrel -> JalenBuilds LLC`) is maintained.
+```bash
+python -m pip install --upgrade build twine
+python -m build --outdir python-dist
+python -m twine check python-dist/*
+python scripts/check_python_package.py python-dist
+```
+
+## Pull request contract
+
+- Start from current `main` and keep the change focused on one release blocker.
+- Add regression tests for behavior changes in both implementations when parity is claimed.
+- Treat a nonzero command, failed build, missing dependency, audit finding, or missing artifact as a failure unless the exception is explicit and documented.
+- Do not add production, security, performance, compatibility, or distribution claims without reproducible evidence.
+- Do not add real credentials, customer data, network calls, payments, publishing, deployment, or destructive host-level test behavior.
+- Update `README.md`, `SECURITY.md`, and `RELEASE_READINESS.md` when the public boundary changes.
+
+No pull request should publish a package, create a release, deploy a service, or change registry/repository settings. Those actions use a separate approval and release process.

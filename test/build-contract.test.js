@@ -166,12 +166,6 @@ test('missing TypeScript compiler fails closed with a clear error', (t) => {
   const projectDir = createTempProject(t); // no stub -> no repo-local compiler
   plantStaleDist(projectDir);
 
-  // Precondition: the studio fallback cannot resolve from inside the temp tree.
-  const studioFallback = path.resolve(
-    projectDir, '..', 'nymrel-swarm-protocol', 'node_modules', 'typescript', 'bin', 'tsc',
-  );
-  assert.equal(fs.existsSync(studioFallback), false, 'test precondition: no studio fallback under temp parent');
-
   const run = runBuild(projectDir);
 
   assert.equal(run.status, 1, 'missing compiler must exit with a clear nonzero code');

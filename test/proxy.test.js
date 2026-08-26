@@ -27,6 +27,9 @@ export async function runProxyTests() {
 
   const privKeyDetections = scanner.scan(privateKey);
   assert.strictEqual(privKeyDetections.length, 1, 'Should detect private key PEM');
+  const anthropicDetections = scanner.scan(anthropicKey);
+  assert.strictEqual(anthropicDetections.length, 1, 'Anthropic keys must not be double-counted as OpenAI keys');
+  assert.strictEqual(anthropicDetections[0].patternName, 'Anthropic API Key');
   console.log('  ✓ Secret exfiltration detection across multi-cloud credentials passed');
 
   // Test 2: Redaction engine
@@ -34,15 +37,33 @@ export async function runProxyTests() {
   const redacted = scanner.redactAll(fullText);
   assert.ok(!redacted.includes(openAiKey), 'Original OpenAI key must not appear in redacted output');
   assert.ok(!redacted.includes(githubPat), 'Original GitHub PAT must not appear in redacted output');
+
+  const customScanner = new SecretScanner([{
+    name: 'Custom credential',
+    regex: /custom-secret-[a-z0-9]{8}/i,
+    description: 'Non-global caller pattern',
+    severity: 'high',
+  }]);
+  const repeatedCustom = 'custom-secret-abcd1234 custom-secret-efgh5678';
+  assert.strictEqual(customScanner.scan(repeatedCustom).length, 2, 'Non-global custom patterns must scan all matches');
+  assert.ok(!customScanner.redactAll(repeatedCustom).includes('custom-secret-'), 'All custom matches must be redacted');
   console.log('  ✓ Automated secret redaction passed');
 
   // Test 3: Domain Filter allowlist & wildcard matching
-  const filter = new DomainFilter(['api.openai.com', '*.anthropic.com', 'registry.npmjs.org'], ['evil-hacker.com']);
+  const filter = new DomainFilter(['api.openai.com', '*.anthropic.com', '*.*.anthropic.com', 'registry.npmjs.org'], ['evil-hacker.com']);
   assert.strictEqual(filter.isAllowed('api.openai.com'), true, 'Exact domain should be allowed');
+  assert.strictEqual(filter.isAllowed('sub.api.openai.com'), false, 'Exact domain must not imply subdomain access');
   assert.strictEqual(filter.isAllowed('api.anthropic.com'), true, 'Wildcard subdomain should be allowed');
-  assert.strictEqual(filter.isAllowed('v1.api.anthropic.com'), true, 'Nested wildcard should be allowed');
+  assert.strictEqual(filter.isAllowed('v1.api.anthropic.com'), true, 'Nested access should require two explicit wildcards');
+  assert.strictEqual(filter.isAllowed('api.openai.com:443'), true, 'Port must not change exact host matching');
+  assert.strictEqual(filter.isAllowed('api.openai.com.'), true, 'A trailing DNS dot should normalize safely');
   assert.strictEqual(filter.isAllowed('evil-hacker.com'), false, 'Blocked domain must be blocked');
   assert.strictEqual(filter.isAllowed('unknown-data-sink.xyz'), false, 'Unlisted domain must be blocked (Zero-Trust)');
+  assert.throws(
+    () => new DomainFilter(['api.openai.com$|evil.example']),
+    /Invalid domain label/,
+    'Regex metacharacters must be rejected instead of changing policy semantics',
+  );
   console.log('  ✓ Domain allowlist & wildcard filtering passed');
 
   // Test 4: Live Zero-Trust Proxy Server
@@ -91,6 +112,34 @@ export async function runProxyTests() {
   assert.strictEqual(detectedSecretCallback, true, 'Proxy must trigger onSecretDetected callback');
   console.log('  ✓ Live Proxy outbound secret interception & 403 blocking passed');
 
+  // Test 4b: Plain HTTP header values are part of the inspectable payload and
+  // must fail closed when they contain a recognized secret.
+  const headerBlockResult = await new Promise((resolve) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: 'http://127.0.0.1/test',
+        method: 'GET',
+        headers: {
+          Host: '127.0.0.1',
+          'X-Debug-Token': openAiKey,
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve({ statusCode: res.statusCode, data }));
+      }
+    );
+    req.end();
+  });
+
+  assert.strictEqual(headerBlockResult.statusCode, 403, 'Proxy should block secrets in plain HTTP headers');
+  assert.ok(headerBlockResult.data.includes('ERR_SANDSTORM_SECRET_EXFILTRATION_BLOCKED'));
+  console.log('  ✓ Plain HTTP header secret interception passed');
+
   await proxy.stop();
-  console.log('✅ Proxy & Secret Scanner tests passed cleanly (4/4)\n');
+  assert.throws(() => proxy.getEnv(), /not running/, 'Stopped proxies must not expose a stale endpoint');
+  console.log('✅ Proxy & Secret Scanner tests passed cleanly (5/5)\n');
 }

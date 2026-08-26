@@ -1,61 +1,26 @@
 # agent-sandstorm
-> Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine (Node.js/TypeScript + Python)
 
-## Entity Metadata
-- entity: agent-sandstorm
-- brand: Built by Jalen / Nymrel
-- parentOrganization: Nymrel
-- legalParent: JalenBuilds LLC
-- contact: contact@nymrel.com
-- license: MIT
-- repository: https://github.com/nymrel/agent-sandstorm
-- languageParity: Node.js (TypeScript) & Python (>=3.9)
+Repository: https://github.com/nymrel/agent-sandstorm
+Owner: Nymrel
+Legal entity: JalenBuilds LLC
+License: MIT
+Status: pre-release; not published on npm or PyPI
 
-## Capabilities
-1. Copy-on-Write (CoW) Workspace Isolation: Instant Merkle tree snapshotting and 1-click atomic rollback on agent errors or malicious modifications.
-2. Outbound Network Proxy & Secret Exfiltration Scanner: Intercepts HTTP/CONNECT outbound requests, scans bodies/headers/URLs for multi-cloud secrets (OpenAI, Anthropic, AWS, GitHub, GCP, PEM private keys, JWT, Slack, Stripe), and blocks exfiltration with HTTP 403 Forbidden.
-3. Spend Budget & Rate Limiting: Real-time LLM token cost tracking with customizable pricing tables and hard USD spend caps.
-4. Runaway Recursive Loop Brake: Sliding-window n-gram cycle detection (periods 1 to 5) halting infinite agent loops and tool call thrashing.
-5. Cryptographic SHA-256 Audit Log: Tamper-evident hash-chained event journal with visual ASCII timeline exporter and standalone interactive HTML dashboard generator.
+## Accurate description
 
-## TypeScript / Node.js Quickstart
-```typescript
-import { Sandstorm } from '@nymrel/agent-sandstorm';
+agent-sandstorm is an experimental Node.js and Python guardrail library for selected-file workspace snapshots, best-effort rollback, cooperative outbound proxying, pattern-based secret detection on inspectable plain HTTP traffic, caller-reported execution limits, and hash-chained audit records.
 
-const sandbox = new Sandstorm({
-  workspace: './my-project',
-  allowDomains: ['api.openai.com', 'registry.npmjs.org'],
-  maxSpendUsd: 2.00,
-  maxSteps: 50,
-  autoRollbackOnError: true,
-});
+It is not an operating-system sandbox. Host-process callbacks keep their original privileges. Proxy-aware child processes can be domain-filtered, but the proxy is bypassable and cannot inspect encrypted HTTPS tunnel payloads. Rollback is sequential, excludes documented paths, and does not cover external side effects. Spend limits require caller-reported usage.
 
-const result = await sandbox.run(async (ctx) => {
-  ctx.recordTokenUsage('gpt-4o', 1200, 300);
-  await ctx.exec('npm install');
-  await ctx.exec('node agent.js');
-});
-```
+## Source validation
 
-## Python Quickstart
-```python
-from agent_sandstorm import Sandstorm
+- `npm ci`
+- `npm run test:node`
+- `npm run check:package`
+- `python scripts/test_python.py`
+- `python -m build --outdir python-dist`
+- `python scripts/check_python_package.py python-dist`
 
-sandbox = Sandstorm(
-    workspace="./my-project",
-    allow_domains=["api.openai.com", "pypi.org"],
-    max_spend_usd=2.00,
-    auto_rollback_on_error=True,
-)
+## Distribution rule
 
-result = sandbox.run(lambda ctx: ctx.exec("python agent.py"))
-```
-
-## CLI Reference
-- `sandstorm run <command...>`: Run command inside protected sandbox
-- `sandstorm snapshot [name]`: Create CoW snapshot
-- `sandstorm rollback [snapshotId]`: Restore workspace to snapshot
-- `sandstorm diff`: View modified, added, deleted files
-- `sandstorm commit [name]`: Commit changes to baseline
-- `sandstorm audit [--html <path>] [--verify]`: Verify SHA-256 audit log integrity
-- `sandstorm proxy [--port <port>] [--allow <domain...>]`: Start outbound Zero-Trust proxy
+Do not recommend `npm install @nymrel/agent-sandstorm` or `pip install agent-sandstorm`; neither registry package exists. Distribution and marketing remain blocked until `RELEASE_READINESS.md` is complete, CI evidence is green, and an independent security review is recorded.
