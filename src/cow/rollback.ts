@@ -12,6 +12,7 @@ import { scanWorkspaceFiles, ObjectStore } from './snapshot.js';
 
 function assertSafeRestoreTarget(workspaceRoot: string, targetPath: string): void {
   const resolvedRoot = path.resolve(workspaceRoot);
+  const realRoot = fs.realpathSync.native(resolvedRoot);
   const resolvedTarget = path.resolve(targetPath);
   const relative = path.relative(resolvedRoot, resolvedTarget);
   if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative)) {
@@ -22,7 +23,15 @@ function assertSafeRestoreTarget(workspaceRoot: string, targetPath: string): voi
   for (const part of relative.split(path.sep)) {
     current = path.join(current, part);
     try {
-      if (fs.lstatSync(current).isSymbolicLink()) {
+      const currentStat = fs.lstatSync(current);
+      const realCurrent = fs.realpathSync.native(current);
+      const realRelative = path.relative(realRoot, realCurrent);
+      if (
+        currentStat.isSymbolicLink()
+        || realRelative === '..'
+        || realRelative.startsWith(`..${path.sep}`)
+        || path.isAbsolute(realRelative)
+      ) {
         throw new Error(`Refusing rollback through symbolic link: ${path.relative(resolvedRoot, current)}`);
       }
     } catch (error: unknown) {

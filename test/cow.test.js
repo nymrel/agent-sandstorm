@@ -71,12 +71,13 @@ export async function runCowTests() {
     fs.writeFileSync(outsideFile, 'outside\n');
     const symlinkSnapshot = cow.createSnapshot('before-symlink-swap');
     fs.rmSync(protectedDir, { recursive: true });
-    fs.symlinkSync(outsideDir, protectedDir, 'dir');
+    fs.symlinkSync(outsideDir, protectedDir, process.platform === 'win32' ? 'junction' : 'dir');
     const symlinkRollback = cow.rollback(symlinkSnapshot.id);
     assert.strictEqual(symlinkRollback.success, false, 'Rollback must refuse a symlinked parent path');
     assert.strictEqual(fs.readFileSync(outsideFile, 'utf8'), 'outside\n', 'Rollback must not write outside the workspace');
 
-    fs.unlinkSync(protectedDir);
+    if (process.platform === 'win32') fs.rmdirSync(protectedDir);
+    else fs.unlinkSync(protectedDir);
     fs.mkdirSync(protectedDir);
     fs.writeFileSync(protectedFile, 'object-original\n');
     const objectSnapshot = cow.createSnapshot('before-object-corruption');

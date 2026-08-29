@@ -97,10 +97,13 @@ export interface ProxyConfig {
   host?: string;
   allowedDomains: string[];
   blockedDomains?: string[];
+  /** Destination ports the cooperative proxy may dial. Defaults to 80 and 443. */
+  allowedPorts?: number[];
   scanPayloads?: boolean;
   customSecretPatterns?: SecretPattern[];
   onSecretDetected?: (detection: SecretDetection) => void;
   onBlockedDomain?: (domain: string, url: string) => void;
+  onBlockedPort?: (host: string, port: number, url: string) => void;
   logRequests?: boolean;
 }
 
@@ -145,6 +148,7 @@ export interface SandstormOptions {
   workspace: string;
   allowDomains?: string[];
   blockDomains?: string[];
+  allowPorts?: number[];
   maxSpendUsd?: number;
   maxTokens?: number;
   maxSteps?: number;

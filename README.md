@@ -11,12 +11,12 @@ The Node.js and Python implementations provide:
 
 - content-addressed snapshots of selected workspace files;
 - best-effort rollback after an exception or unsuccessful child command;
-- an explicit outbound-domain allowlist for child processes that honor proxy environment variables;
+- explicit outbound-domain and destination-port allowlists for child processes that honor proxy environment variables;
 - pattern-based secret blocking for inspectable plain HTTP URLs, headers, and bodies;
 - caller-reported token, spend, step, and loop limits;
 - hash-chained audit records with text and HTML renderers.
 
-Outbound access is default-deny when no allowlist is supplied. An allowlist only affects proxy-aware child processes; it does not create host-level network isolation.
+Outbound domains are default-deny when no domain allowlist is supplied. Destination ports default to `80` and `443`; callers must explicitly admit any other port. These policies affect only proxy-aware child processes and do not create host-level network isolation.
 
 The default command contract is fail-closed: a nonzero child exit fails the enclosing run and requests rollback. Callers that intentionally inspect a nonzero result must opt in with `allowNonZeroExit: true` in Node.js or `allow_nonzero=True` in Python.
 
@@ -27,7 +27,7 @@ Commands run without a shell by default. Shell operators require the explicit No
 Sandstorm is a guardrail library, not containment. In particular:
 
 - callbacks execute in the host process and retain its filesystem, environment, and network privileges;
-- proxy settings are cooperative and can be ignored or bypassed by child software;
+- domain and destination-port proxy settings are cooperative and can be ignored or bypassed by child software;
 - HTTPS `CONNECT` tunnels are domain-filtered, but their encrypted payloads cannot be inspected by this proxy;
 - snapshot rollback is sequential and best-effort, not crash-atomic;
 - `.git`, `.sandstorm`, `node_modules`, `dist`, `build`, virtual environments, caches, and other configured exclusions are not restored;
@@ -58,6 +58,7 @@ import { Sandstorm } from './dist/index.js';
 const sandbox = new Sandstorm({
   workspace: './my-project',
   allowDomains: ['registry.npmjs.org'],
+  allowPorts: [443],
   autoRollbackOnError: true,
 });
 
@@ -86,6 +87,7 @@ from agent_sandstorm import Sandstorm
 sandbox = Sandstorm(
     workspace="./my-project",
     allow_domains=["pypi.org"],
+    allow_ports=[443],
     auto_rollback_on_error=True,
 )
 

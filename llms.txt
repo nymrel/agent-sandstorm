@@ -8,15 +8,16 @@ Status: pre-release; not published on npm or PyPI
 
 ## Accurate description
 
-agent-sandstorm is an experimental Node.js and Python guardrail library for selected-file workspace snapshots, best-effort rollback, cooperative outbound proxying, pattern-based secret detection on inspectable plain HTTP traffic, caller-reported execution limits, and hash-chained audit records.
+agent-sandstorm is an experimental Node.js and Python guardrail library for selected-file workspace snapshots, best-effort rollback, cooperative outbound domain and destination-port filtering, pattern-based secret detection on inspectable plain HTTP traffic, caller-reported execution limits, and hash-chained audit records.
 
-It is not an operating-system sandbox. Host-process callbacks keep their original privileges. Proxy-aware child processes can be domain-filtered, but the proxy is bypassable and cannot inspect encrypted HTTPS tunnel payloads. Rollback is sequential, excludes documented paths, and does not cover external side effects. Spend limits require caller-reported usage.
+It is not an operating-system sandbox. Host-process callbacks keep their original privileges. Proxy-aware child processes can be domain- and destination-port-filtered, but the proxy is bypassable and cannot inspect encrypted HTTPS tunnel payloads. Rollback is sequential, excludes documented paths, and does not cover external side effects. Spend limits require caller-reported usage.
 
 ## Source validation
 
 - `npm ci`
 - `npm run test:node`
 - `npm run check:package`
+- `npm run check`
 - `python scripts/test_python.py`
 - `python -m build --outdir python-dist`
 - `python scripts/check_python_package.py python-dist`

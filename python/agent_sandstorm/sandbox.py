@@ -46,6 +46,7 @@ class Sandstorm:
         workspace: str,
         allow_domains: Optional[List[str]] = None,
         block_domains: Optional[List[str]] = None,
+        allow_ports: Optional[List[int]] = None,
         max_spend_usd: Optional[float] = None,
         max_tokens: Optional[int] = None,
         max_steps: int = 100,
@@ -75,9 +76,19 @@ class Sandstorm:
         self.proxy = ZeroTrustProxy(
             allowed_domains=allowed,
             blocked_domains=block_domains,
+            allowed_ports=allow_ports,
             scan_payloads=scan_secrets,
             on_secret_detected=lambda d: self.audit.record_event(
                 "SECRET_BLOCKED", "critical", {"pattern": d.pattern_name, "redacted": d.redacted_text}
+            ),
+            on_blocked_port=lambda host, port, url: self.audit.record_event(
+                "PORT_BLOCKED",
+                "warn",
+                {
+                    "host": self.proxy.scanner.redact_all(host),
+                    "port": "invalid" if port is None else port,
+                    "url": self.proxy.scanner.redact_all(url),
+                },
             ),
         )
 

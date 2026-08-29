@@ -51,6 +51,8 @@ class TestE2E(unittest.TestCase):
         )
         self.assertFalse(omitted.proxy.filter.is_allowed("api.openai.com"))
         self.assertFalse(explicit_empty.proxy.filter.is_allowed("api.openai.com"))
+        self.assertEqual(omitted.proxy.get_allowed_ports(), [80, 443])
+        self.assertIsNotNone(omitted.proxy.on_blocked_port)
 
     def test_e2e_error_with_auto_rollback(self):
         sandbox = Sandstorm(

@@ -47,6 +47,7 @@
     "test:node": "npm run build && node test/runner.js && npm run test:build-contract",
     "test:build-contract": "node --test test/build-contract.test.js",
     "test:python": "python scripts/test_python.py",
+    "check": "npm run test:node && npm run test:python && npm run check:package",
     "check:package": "npm run build && node scripts/check-package.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run test:node"

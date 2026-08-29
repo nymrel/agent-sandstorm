@@ -117,6 +117,7 @@ export class Sandstorm {
       workspace: this.workspace,
       allowDomains: options.allowDomains ?? [],
       blockDomains: options.blockDomains || [],
+      allowPorts: options.allowPorts ?? [80, 443],
       maxSpendUsd: options.maxSpendUsd ?? Infinity,
       maxTokens: options.maxTokens ?? Infinity,
       maxSteps: options.maxSteps ?? 100,
@@ -137,6 +138,7 @@ export class Sandstorm {
       initialPayload: {
         workspace: this.workspace,
         allowDomains: this.options.allowDomains,
+        allowPorts: this.options.allowPorts,
         autoRollback: this.options.autoRollbackOnError,
       },
     });
@@ -144,6 +146,7 @@ export class Sandstorm {
     this.proxy = new ZeroTrustProxy({
       allowedDomains: this.options.allowDomains,
       blockedDomains: this.options.blockDomains,
+      allowedPorts: this.options.allowPorts,
       scanPayloads: this.options.scanSecrets,
       customSecretPatterns: this.options.customSecretPatterns,
       onSecretDetected: (detection) => {
@@ -157,6 +160,13 @@ export class Sandstorm {
       onBlockedDomain: (domain, url) => {
         this.audit.recordEvent('DOMAIN_BLOCKED', 'warn', {
           domain: this.proxy.redactForAudit(domain),
+          url: this.proxy.redactForAudit(url),
+        });
+      },
+      onBlockedPort: (host, port, url) => {
+        this.audit.recordEvent('PORT_BLOCKED', 'warn', {
+          host: this.proxy.redactForAudit(host),
+          port: Number.isNaN(port) ? 'invalid' : port,
           url: this.proxy.redactForAudit(url),
         });
       },

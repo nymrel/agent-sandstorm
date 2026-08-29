@@ -5,6 +5,7 @@
 
 import * as assert from 'node:assert';
 import * as http from 'node:http';
+import * as net from 'node:net';
 import { SecretScanner, DomainFilter, ZeroTrustProxy } from '../dist/proxy/index.js';
 
 export async function runProxyTests() {
@@ -57,6 +58,8 @@ export async function runProxyTests() {
   assert.strictEqual(filter.isAllowed('v1.api.anthropic.com'), true, 'Nested access should require two explicit wildcards');
   assert.strictEqual(filter.isAllowed('api.openai.com:443'), true, 'Port must not change exact host matching');
   assert.strictEqual(filter.isAllowed('api.openai.com.'), true, 'A trailing DNS dot should normalize safely');
+  const ipv6Filter = new DomainFilter(['::1']);
+  assert.strictEqual(ipv6Filter.isAllowed('[::1]'), true, 'Bracketed IPv6 authorities must match an allowed IPv6 address');
   assert.strictEqual(filter.isAllowed('evil-hacker.com'), false, 'Blocked domain must be blocked');
   assert.strictEqual(filter.isAllowed('unknown-data-sink.xyz'), false, 'Unlisted domain must be blocked (Zero-Trust)');
   assert.throws(
@@ -64,6 +67,8 @@ export async function runProxyTests() {
     /Invalid domain label/,
     'Regex metacharacters must be rejected instead of changing policy semantics',
   );
+  const ipv6Proxy = new ZeroTrustProxy({ allowedDomains: ['::1'] });
+  assert.deepStrictEqual(ipv6Proxy.getAllowedPorts(), [80, 443]);
   console.log('  ✓ Domain allowlist & wildcard filtering passed');
 
   // Test 4: Live Zero-Trust Proxy Server
@@ -100,7 +105,7 @@ export async function runProxyTests() {
       (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve({ statusCode: res.statusCode, data }));
+        res.on('end', () => resolve({ statusCode: res.statusCode, headers: res.headers, data }));
       }
     );
     req.write(postData);
@@ -139,7 +144,113 @@ export async function runProxyTests() {
   assert.ok(headerBlockResult.data.includes('ERR_SANDSTORM_SECRET_EXFILTRATION_BLOCKED'));
   console.log('  ✓ Plain HTTP header secret interception passed');
 
+  // Test 5: an allowed host does not authorize arbitrary service ports.
+  assert.deepStrictEqual(proxy.getAllowedPorts(), [80, 443]);
+  assert.throws(
+    () => new ZeroTrustProxy({ allowedDomains: ['127.0.0.1'], allowedPorts: [] }),
+    /at least one destination port/,
+  );
+  assert.throws(
+    () => new ZeroTrustProxy({ allowedDomains: ['127.0.0.1'], allowedPorts: [0, 443] }),
+    /1 through 65535/,
+  );
+
+  const requestViaProxy = (proxyPort, path, headers = {}) => new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: proxyPort, path, method: 'GET', headers },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve({ statusCode: res.statusCode, headers: res.headers, data }));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+
+  const connectViaProxy = (proxyPort, authority) => new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port: proxyPort });
+    let response = '';
+    socket.setTimeout(5_000, () => socket.destroy(new Error('CONNECT response timed out')));
+    socket.on('error', reject);
+    socket.on('connect', () => {
+      socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`);
+    });
+    socket.on('data', (chunk) => { response += chunk.toString('utf8'); });
+    socket.on('close', () => resolve(response));
+  });
+
+  let decoyHits = 0;
+  const decoy = net.createServer((socket) => {
+    decoyHits += 1;
+    socket.destroy();
+  });
+  await new Promise((resolve) => decoy.listen(0, '127.0.0.1', resolve));
+  const decoyAddress = decoy.address();
+  assert.ok(decoyAddress && typeof decoyAddress === 'object');
+  const decoyPort = decoyAddress.port;
+
+  const httpPortBlock = await requestViaProxy(port, `http://127.0.0.1:${decoyPort}/blocked`);
+  assert.strictEqual(httpPortBlock.statusCode, 403);
+  assert.ok(httpPortBlock.data.includes('ERR_SANDSTORM_PORT_BLOCKED'));
+
+  const emptyPortBlock = await requestViaProxy(port, 'http://127.0.0.1:/blocked');
+  assert.strictEqual(emptyPortBlock.statusCode, 403);
+  assert.ok(emptyPortBlock.data.includes('ERR_SANDSTORM_PORT_BLOCKED'));
+
+  const connectPortBlock = await connectViaProxy(port, `127.0.0.1:${decoyPort}`);
+  assert.ok(connectPortBlock.includes('403 Forbidden'));
+  assert.ok(connectPortBlock.includes('ERR_SANDSTORM_PORT_BLOCKED'));
+
+  const malformedConnectBlock = await connectViaProxy(port, '127.0.0.1:not-a-port');
+  assert.ok(malformedConnectBlock.includes('403 Forbidden'));
+  assert.ok(malformedConnectBlock.includes('ERR_SANDSTORM_PORT_BLOCKED'));
+  assert.strictEqual(decoyHits, 0, 'Blocked destinations must not receive an upstream connection');
+
+  let approvedHeaders;
+  const approvedOrigin = http.createServer((originRequest, res) => {
+    approvedHeaders = originRequest.headers;
+    res.setHeader('Connection', 'x-response-remove, close');
+    res.setHeader('X-Response-Remove', 'response-leaked');
+    res.setHeader('X-Response-Keep', 'response-kept');
+    res.setHeader('Trailer', 'Expires');
+    res.end('approved-port-ok');
+  });
+  await new Promise((resolve) => approvedOrigin.listen(0, '127.0.0.1', resolve));
+  const approvedAddress = approvedOrigin.address();
+  assert.ok(approvedAddress && typeof approvedAddress === 'object');
+  const approvedProxy = new ZeroTrustProxy({
+    allowedDomains: ['127.0.0.1'],
+    allowedPorts: [approvedAddress.port],
+  });
+  const approvedInfo = await approvedProxy.start();
+  const approved = await requestViaProxy(
+    approvedInfo.port,
+    `http://127.0.0.1:${approvedAddress.port}/allowed`,
+    {
+      Host: 'mismatched.example',
+      Connection: 'keep-alive, x-remove-me',
+      'Proxy-Authorization': 'Basic dGVzdDp0ZXN0',
+      'X-Remove-Me': 'must-not-forward',
+      'X-Keep-Me': 'forwarded',
+    },
+  );
+  assert.strictEqual(approved.statusCode, 200);
+  assert.strictEqual(approved.data, 'approved-port-ok');
+  assert.strictEqual(approvedHeaders.host, `127.0.0.1:${approvedAddress.port}`);
+  assert.strictEqual(approvedHeaders['proxy-authorization'], undefined);
+  assert.strictEqual(approvedHeaders['x-remove-me'], undefined);
+  assert.strictEqual(approvedHeaders['x-keep-me'], 'forwarded');
+  assert.strictEqual(approved.headers['x-response-remove'], undefined);
+  assert.ok(!String(approved.headers.connection || '').includes('x-response-remove'));
+  assert.strictEqual(approved.headers.trailer, undefined);
+  assert.strictEqual(approved.headers['x-response-keep'], 'response-kept');
+  await approvedProxy.stop();
+  await new Promise((resolve) => approvedOrigin.close(resolve));
+  await new Promise((resolve) => decoy.close(resolve));
+  console.log('  ✓ Destination-port policy fails closed before upstream dialing');
+
   await proxy.stop();
   assert.throws(() => proxy.getEnv(), /not running/, 'Stopped proxies must not expose a stale endpoint');
-  console.log('✅ Proxy & Secret Scanner tests passed cleanly (5/5)\n');
+  console.log('✅ Proxy & Secret Scanner tests passed cleanly (6/6)\n');
 }

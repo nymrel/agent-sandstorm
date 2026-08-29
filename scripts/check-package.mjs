@@ -4,17 +4,30 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const result = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+const npmExecPath = process.env.npm_execpath;
+assert.ok(
+  npmExecPath && fs.existsSync(npmExecPath),
+  'npm package verification must run through npm so npm_execpath identifies the active CLI',
+);
+
+const result = spawnSync(
+  process.execPath,
+  [npmExecPath, 'pack', '--dry-run', '--json', '--ignore-scripts'],
+  {
   encoding: 'utf8',
   shell: false,
-});
+  },
+);
+
+if (result.error) throw result.error;
 
 if (result.status !== 0) {
   process.stderr.write(result.stderr || result.stdout);
   process.exit(result.status ?? 1);
 }
 
-const [pack] = JSON.parse(result.stdout);
+const [pack] = JSON.parse(result.stdout || '[]');
+assert.ok(pack, 'npm pack returned no package manifest');
 const paths = new Set(pack.files.map((file) => file.path));
 const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 

@@ -13,9 +13,10 @@ This checklist is the release gate for both the npm and PyPI packages. A checked
 - [x] Python source tests run without an ambient `PYTHONPATH`.
 - [x] Python wheel contents exclude the repository test suite and are verified without publishing.
 - [x] A nonzero child command fails the enclosing Node.js and Python run by default and requests rollback.
-- [x] Rollback refuses symlinked restore paths and corrupted content-addressed objects instead of writing them.
+- [x] Rollback refuses symlinked or Windows-junction restore paths and corrupted content-addressed objects instead of writing them.
 - [x] Child commands avoid a platform shell by default; shell execution requires explicit caller opt-in.
 - [x] Plain HTTP header secrets are blocked in both implementations.
+- [x] Allowed domains do not imply arbitrary destination ports; both implementations default to ports 80 and 443 and reject malformed or unapproved ports before dialing upstream.
 - [x] Exact domain entries no longer imply arbitrary subdomain access, and wildcard labels have explicit one-label semantics.
 - [x] Invalid budget, token, and custom-pricing inputs fail closed instead of reducing or corrupting counters.
 - [x] Per-run limiter state resets deterministically, configuration is validated, and disabling loop-pattern checks retains the step ceiling.
@@ -26,6 +27,7 @@ This checklist is the release gate for both the npm and PyPI packages. A checked
 - [x] The Python plain HTTP proxy forwards allowed requests instead of returning a synthetic success response.
 - [x] Registry publication requires a manual workflow dispatch, an exact existing semantic-version tag checkout, matching Node/Python versions, and an explicit `publish` confirmation.
 - [x] Public documentation states the actual pre-release boundary and removes unsupported benchmark and security guarantees.
+- [x] The npm package checker and rollback redirect canaries execute on Windows without relying on ambient shell or symlink privileges.
 
 ## Required before a production release
 

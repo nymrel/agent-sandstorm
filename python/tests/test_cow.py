@@ -4,6 +4,7 @@ Unit tests for CoW Workspace Isolation Engine (Python)
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from agent_sandstorm.cow import CoWSnapshotManager
@@ -80,13 +81,30 @@ class TestCoW(unittest.TestCase):
 
         symlink_snapshot = self.cow.create_snapshot("before-symlink-swap")
         shutil.rmtree(protected_dir)
-        os.symlink(outside_dir, protected_dir, target_is_directory=True)
+        redirect_kind = "symlink"
+        try:
+            os.symlink(outside_dir, protected_dir, target_is_directory=True)
+        except OSError as error:
+            if os.name != "nt" or getattr(error, "winerror", None) != 1314:
+                raise
+            redirect_kind = "junction"
+            created = subprocess.run(
+                ["cmd.exe", "/d", "/c", "mklink", "/J", protected_dir, outside_dir],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if created.returncode != 0:
+                self.fail(f"Unable to create Windows junction canary: {created.stderr or created.stdout}")
         symlink_rollback = self.cow.rollback(symlink_snapshot.id)
         self.assertFalse(symlink_rollback.success)
         with open(outside_file, encoding="utf-8") as file:
             self.assertEqual(file.read(), "outside\n")
 
-        os.unlink(protected_dir)
+        if redirect_kind == "junction":
+            os.rmdir(protected_dir)
+        else:
+            os.unlink(protected_dir)
         os.mkdir(protected_dir)
         with open(protected_file, "w", encoding="utf-8") as file:
             file.write("object-original\n")

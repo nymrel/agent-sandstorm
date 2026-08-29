@@ -31,6 +31,7 @@ export async function runE2eTests() {
       auditLogPath: path.join(tmpDir, '.sandstorm', 'default-deny-audit.jsonl'),
     });
     assert.deepStrictEqual(defaultDenySandbox.options.allowDomains, [], 'Omitted allowlist must default to deny');
+    assert.deepStrictEqual(defaultDenySandbox.options.allowPorts, [80, 443], 'Omitted port policy must stay conservative');
 
     // Test 1: Successful agent session with token recording & file creation
     const res1 = await sandbox.run(async (ctx) => {

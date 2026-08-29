@@ -11,6 +11,7 @@ import time
 import shutil
 import hashlib
 import re
+import stat
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Set, Any
 
@@ -32,6 +33,23 @@ DEFAULT_IGNORED_FILES = {
     ".DS_Store",
     "Thumbs.db",
 }
+
+
+def _is_path_redirect(path: str) -> bool:
+    """Return True for symlinks and Windows directory junctions."""
+    if os.path.islink(path):
+        return True
+    is_junction = getattr(os.path, "isjunction", None)
+    if is_junction and is_junction(path):
+        return True
+    if os.name == "nt":
+        try:
+            attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+            reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            return bool(attributes & reparse_flag)
+        except OSError:
+            return False
+    return False
 
 
 @dataclass
@@ -111,14 +129,20 @@ def scan_workspace(
 
     for root, dirs, filenames in os.walk(workspace_root):
         # Filter directories in-place
-        dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith(".sandstorm")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in ignored_dirs
+            and not d.startswith(".sandstorm")
+            and not _is_path_redirect(os.path.join(root, d))
+        ]
 
         for fname in filenames:
             if fname in ignored_files:
                 continue
 
             full_path = os.path.join(root, fname)
-            if os.path.islink(full_path):
+            if _is_path_redirect(full_path):
                 continue
             rel_path = os.path.relpath(full_path, workspace_root).replace("\\", "/")
 
@@ -183,7 +207,7 @@ def _assert_safe_restore_target(workspace_root: str, target_path: str) -> None:
     current = resolved_root
     for part in relative.split(os.sep):
         current = os.path.join(current, part)
-        if os.path.lexists(current) and os.path.islink(current):
+        if os.path.lexists(current) and _is_path_redirect(current):
             raise ValueError(
                 f"Refusing rollback through symbolic link: {os.path.relpath(current, resolved_root)}"
             )
@@ -398,7 +422,7 @@ class CoWSnapshotManager:
                 is_empty = False
                 continue
             full_path = os.path.join(dir_path, entry)
-            if os.path.islink(full_path):
+            if _is_path_redirect(full_path):
                 is_empty = False
             elif os.path.isdir(full_path):
                 child_empty = self._cleanup_empty_dirs(full_path, False)
