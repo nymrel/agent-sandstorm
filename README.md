@@ -5,8 +5,8 @@
 **Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine**  
 *Full-Parity Dual Engine for Node.js / TypeScript & Python*
 
-[![npm version](https://img.shields.io/badge/npm-v1.0.0-blue.svg)](https://www.npmjs.com/package/@nymrel/agent-sandstorm)
-[![python version](https://img.shields.io/badge/python-3.9%2B-green.svg)](https://pypi.org/project/agent-sandstorm)
+[![npm status](https://img.shields.io/badge/npm-not%20published-lightgrey.svg)](https://www.npmjs.com/package/@nymrel/agent-sandstorm)
+[![PyPI status](https://img.shields.io/badge/PyPI-not%20published-lightgrey.svg)](https://pypi.org/project/agent-sandstorm/)
 [![license](https://img.shields.io/badge/license-MIT-orange.svg)](./LICENSE)
 [![zero-dependencies](https://img.shields.io/badge/dependencies-0%20(pure%20native)-brightgreen.svg)]()
 [![dual-audience](https://img.shields.io/badge/Nymrel-Dual--Audience%20Verified-gold.svg)](./llms.txt)
@@ -71,19 +71,12 @@
 
 ---
 
-## 📦 Installation
+## 📦 Distribution status
 
-### Node.js / TypeScript
-```bash
-npm install @nymrel/agent-sandstorm
-# or globally for the CLI:
-npm install -g @nymrel/agent-sandstorm
-```
+> [!WARNING]
+> **Not published yet.** At the latest distribution check (2026-08-27 UTC), `@nymrel/agent-sandstorm` did not exist on npm and `agent-sandstorm` did not exist on PyPI. The registry install commands previously shown here have been removed until both packages are published and smoke-tested.
 
-### Python
-```bash
-pip install agent-sandstorm
-```
+Packaging manifests and a release workflow are present, but there are currently no GitHub releases or completed workflow runs. For development from source, clone this repository and follow [CONTRIBUTING.md](./CONTRIBUTING.md). Release-hardening work is tracked in [draft PR #4](https://github.com/nymrel/agent-sandstorm/pull/4).
 
 ---
 
