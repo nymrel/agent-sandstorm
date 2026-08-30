@@ -1,10 +1,13 @@
-name: Release & Publish
+---
+# yamllint disable rule:line-length
+# yamllint disable rule:truthy
+name: Build and publish packages
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing version tag to publish (for example, v0.1.0)
+        description: Existing semantic-version tag to publish
         required: true
         type: string
       confirmation:
@@ -16,31 +19,48 @@ on:
           - hold
           - publish
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: release-${{ inputs.release_tag }}
+  cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validate release candidate
+  verify:
+    name: Verify exact integrated release candidate
     if: inputs.confirmation == 'publish'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     outputs:
       commit_sha: ${{ steps.release.outputs.commit_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the requested tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ inputs.release_tag }}
-      - uses: actions/setup-node@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
-          node-version: 20.x
+          node-version: 24
           cache: npm
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          python-version: '3.12'
-          cache: pip
-      - name: Verify tag checkout and package versions
+          python-version: '3.13'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: false
+          version: 0.12.7
+
+      - name: Verify tag, source ancestry, and package versions
         id: release
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -48,60 +68,152 @@ jobs:
           git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"
           tag_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
           test "$(git rev-parse HEAD)" = "${tag_commit}"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "${tag_commit}" refs/remotes/origin/main
           echo "commit_sha=${tag_commit}" >> "${GITHUB_OUTPUT}"
           node scripts/check-release-version.mjs
-      - run: npm ci
-      - run: npm run test:node
-      - run: npm run check:package
-      - run: python -m pip install --upgrade build twine
-      - run: python scripts/test_python.py
-      - run: python -m build --outdir python-dist
-      - run: python -m twine check python-dist/*
-      - run: python scripts/check_python_package.py python-dist
+
+      - name: Install locked dependencies without lifecycle scripts
+        # npm is the package manager under test and is pinned outside the project lockfile.
+        # zizmor: ignore[adhoc-packages]
+        run: |
+          npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run source and dependency gates
+        run: |
+          npm run check
+          npm run audit:ci
+          uvx pip-audit@2.10.1 .
+
+  build:
+    name: Build immutable distributions
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.verify.outputs.commit_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: false
+          version: 0.12.7
+
+      - name: Build exact package archives and checksums
+        # npm is the package manager under test and is pinned outside the project lockfile.
+        # zizmor: ignore[adhoc-packages]
+        run: |
+          npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          mkdir -p release/npm release/python
+          npm pack --ignore-scripts --pack-destination release/npm
+          uvx --from build@1.6.0 pyproject-build --outdir release/python
+          uvx twine@7.0.0 check release/python/*
+          python scripts/check_python_package.py release/python
+          sha256sum release/npm/* release/python/* > release/SHA256SUMS
+
+      - name: Upload release distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: release-distributions
+          path: release
+          if-no-files-found: error
+          retention-days: 14
+
+  attest:
+    name: Attest built distributions
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Download release distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: release-distributions
+          path: release
+
+      - name: Generate build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: release/**/*
 
   publish-npm:
-    name: Publish npm package
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: npm
+    name: Publish npm through trusted publishing
+    needs: [build, attest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@nymrel/agent-sandstorm
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Download release distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          ref: ${{ needs.validate.outputs.commit_sha }}
-      - uses: actions/setup-node@v4
+          name: release-distributions
+          path: release
+
+      - name: Set up Node.js for trusted publishing
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
-          node-version: 20.x
-          cache: npm
-          registry-url: https://registry.npmjs.org
-      - run: npm ci
-      - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Pin npm with trusted-publishing support
+        # npm is the publishing client and is pinned outside the project lockfile.
+        # zizmor: ignore[adhoc-packages]
+        run: npm install --global npm@11.19.1 --ignore-scripts --no-audit --no-fund
+
+      - name: Publish the exact npm archive with provenance
+        run: |
+          mapfile -t packages < <(find release/npm -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          npm publish "${packages[0]}" --access public --provenance --ignore-scripts
 
   publish-pypi:
-    name: Publish Python package
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Publish PyPI through trusted publishing
+    needs: [build, attest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     environment:
       name: pypi
-      url: https://pypi.org/p/agent-sandstorm
+      url: https://pypi.org/project/agent-sandstorm/
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Download release distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          ref: ${{ needs.validate.outputs.commit_sha }}
-      - uses: actions/setup-python@v5
+          name: release-distributions
+          path: release
+
+      - name: Publish the exact Python distributions
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
         with:
-          python-version: '3.12'
-      - run: python -m pip install --upgrade build
-      - run: python -m build --outdir python-dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: python-dist/
+          packages-dir: release/python
+          print-hash: true

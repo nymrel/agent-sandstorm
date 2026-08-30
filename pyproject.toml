@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling==1.32.0"]
+build-backend = "hatchling.build"
 
 [project]
 name = "agent-sandstorm"
@@ -10,16 +10,16 @@ authors = [
 ]
 description = "Experimental agent execution guardrails, workspace recovery, cooperative proxying, and audit utilities"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -28,6 +28,7 @@ keywords = ["ai-agents", "security", "sandbox", "copy-on-write", "zero-trust", "
 
 [project.urls]
 "Homepage" = "https://github.com/nymrel/agent-sandstorm"
+"Repository" = "https://github.com/nymrel/agent-sandstorm"
 "Bug Tracker" = "https://github.com/nymrel/agent-sandstorm/issues"
 "Changelog" = "https://github.com/nymrel/agent-sandstorm/blob/main/CHANGELOG.md"
 "Security" = "https://github.com/nymrel/agent-sandstorm/blob/main/SECURITY.md"
@@ -35,8 +36,23 @@ keywords = ["ai-agents", "security", "sandbox", "copy-on-write", "zero-trust", "
 [project.scripts]
 sandstorm-py = "agent_sandstorm.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["python"]
-include = ["agent_sandstorm*"]
-exclude = ["tests*"]
-namespaces = false
+[tool.hatch.build.targets.wheel]
+packages = ["python/agent_sandstorm"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "python/agent_sandstorm",
+    "python/tests",
+    "LICENSE",
+    "README.md",
+    "RELEASE_READINESS.md",
+    "SECURITY.md",
+    "pyproject.toml",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

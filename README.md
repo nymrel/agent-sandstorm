@@ -53,7 +53,7 @@ Packaging manifests and a manual release workflow are present, but there are cur
 
 ### Node.js / TypeScript
 
-Requirements: Node.js 18 or newer and npm.
+Requirements: Node.js 22.19 or newer (through Node 26) and npm 11.
 
 ```bash
 git clone https://github.com/nymrel/agent-sandstorm.git
@@ -92,7 +92,7 @@ if (!result.success) {
 
 ### Python
 
-Requirements: Python 3.9 or newer.
+Requirements: Python 3.11 or newer.
 
 ```bash
 python -m venv .venv

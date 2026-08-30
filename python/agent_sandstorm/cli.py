@@ -10,7 +10,6 @@ import argparse
 import shlex
 from .sandbox import Sandstorm
 from .cow import CoWSnapshotManager
-from .audit import AuditLogger, export_timeline_ascii, generate_html_report
 
 
 def main(argv=None):

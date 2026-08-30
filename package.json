@@ -1,6 +1,7 @@
 {
   "name": "@nymrel/agent-sandstorm",
   "version": "0.1.0",
+  "packageManager": "npm@11.19.1",
   "description": "Experimental agent execution guardrails, workspace recovery, cooperative proxying, and audit utilities",
   "type": "module",
   "main": "./dist/index.js",
@@ -43,14 +44,16 @@
   },
   "scripts": {
     "build": "node ./scripts/build.js",
+    "typecheck": "tsc --noEmit",
     "test": "npm run test:node",
     "test:node": "npm run build && node test/runner.js && npm run test:build-contract",
     "test:build-contract": "node --test test/build-contract.test.js",
     "test:python": "python scripts/test_python.py",
     "check": "npm run test:node && npm run test:python && npm run check:package",
     "check:package": "npm run build && node scripts/check-package.mjs",
+    "audit:ci": "npm audit --audit-level=high",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run test:node"
+    "prepublishOnly": "npm run check"
   },
   "files": [
     "bin/sandstorm.js",
@@ -84,13 +87,16 @@
     "url": "https://github.com/nymrel/agent-sandstorm/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.19 <27",
+    "npm": ">=11.5 <12"
   },
   "devDependencies": {
-    "@types/node": "18.19.130",
-    "typescript": "5.9.3"
+    "@types/node": "26.4.0",
+    "typescript": "7.0.2"
   },
+  "sideEffects": false,
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   }
 }

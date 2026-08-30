@@ -25,6 +25,10 @@
 
 ### Changed
 
+- Raised the maintained platform floor to Node.js 22/24/26, npm 11, TypeScript 7, and Python 3.11-3.14.
+- Replaced the legacy setuptools manifest path with a pinned Hatchling wheel/sdist contract.
+- Pinned every GitHub Action to an immutable revision and added fixed Linux, macOS, and Windows acceptance jobs.
+- Made publication consume checksummed, attested package artifacts from one exact integrated tag through explicit OIDC trusted-publishing gates.
 - Split continuous integration from a manually confirmed publication workflow.
 - Stopped tracking generated Node.js output; builds and package checks now create `dist/` deterministically.
 - Reframed the project as a pre-release guardrail library and documented its actual security boundary.

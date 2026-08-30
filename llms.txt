@@ -5,6 +5,7 @@ Owner: Nymrel
 Legal entity: JalenBuilds LLC
 License: MIT
 Status: pre-release; not published on npm or PyPI
+Toolchain: Node.js 22/24/26 with npm 11 and TypeScript 7; Python 3.11-3.14 with a pinned Hatchling build backend
 
 ## Accurate description
 
@@ -19,9 +20,10 @@ It is not an operating-system sandbox. Host-process callbacks keep their origina
 - `npm run check:package`
 - `npm run check`
 - `python scripts/test_python.py`
-- `python -m build --outdir python-dist`
+- `uvx --from build@1.6.0 pyproject-build --outdir python-dist`
+- `uvx twine@7.0.0 check python-dist/*`
 - `python scripts/check_python_package.py python-dist`
 
 ## Distribution rule
 
-Do not recommend `npm install @nymrel/agent-sandstorm` or `pip install agent-sandstorm`; neither registry package exists. Distribution and marketing remain blocked until `RELEASE_READINESS.md` is complete, CI evidence is green, and an independent security review is recorded.
+Do not recommend `npm install @nymrel/agent-sandstorm` or `pip install agent-sandstorm`; neither registry package exists. The checked-in workflow only makes exact, integrated, existing semantic-version tags eligible for a separately confirmed trusted-publishing attempt. Distribution and marketing remain blocked until `RELEASE_READINESS.md` is complete, CI evidence is green, provider environments are configured, and an independent security review is recorded.

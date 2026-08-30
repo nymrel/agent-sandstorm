@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Callable, Any
 from .cow import CoWSnapshotManager, Snapshot, RollbackResult
 from .proxy import ZeroTrustProxy
 from .limiter import ExecutionLimiter
-from .audit import AuditLogger, export_timeline_ascii, generate_html_report
+from .audit import AuditLogger, export_timeline_ascii
 
 
 @dataclass

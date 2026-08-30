@@ -4,7 +4,7 @@ The project is pre-release. Contributions should reduce a documented release blo
 
 ## Development setup
 
-Node.js 18+ and Python 3.9+ are required.
+Node.js 22.19+ through Node 26, npm 11, and Python 3.11+ are required. The pinned local defaults are recorded in `.node-version` and `.python-version`.
 
 ```bash
 npm ci
@@ -16,9 +16,8 @@ python scripts/test_python.py
 To validate the Python distribution:
 
 ```bash
-python -m pip install --upgrade build twine
-python -m build --outdir python-dist
-python -m twine check python-dist/*
+uvx --from build@1.6.0 pyproject-build --outdir python-dist
+uvx twine@7.0.0 check python-dist/*
 python scripts/check_python_package.py python-dist
 ```
 
