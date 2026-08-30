@@ -26,7 +26,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: agent-sandstorm-${{ inputs.release_tag || github.ref }}
+  group: agent-sandstorm-${{ github.event.inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
