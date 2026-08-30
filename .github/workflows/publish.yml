@@ -1,9 +1,13 @@
 ---
 # yamllint disable rule:line-length
 # yamllint disable rule:truthy
-name: Build and publish packages
+name: Continuous integration and gated package publishing
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -22,13 +26,21 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-${{ inputs.release_tag }}
+  group: agent-sandstorm-${{ inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  quality:
+    name: Reusable quality gate
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
   verify:
     name: Verify exact integrated release candidate
-    if: inputs.confirmation == 'publish'
+    needs: quality
+    if: github.event_name == 'workflow_dispatch' && inputs.confirmation == 'publish'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

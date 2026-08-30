@@ -29,6 +29,7 @@ This checklist is the release gate for both the npm and PyPI packages. A checked
 - [x] The Python plain HTTP proxy forwards allowed requests instead of returning a synthetic success response.
 - [x] Registry publication requires a manual workflow dispatch, an exact existing semantic-version tag checkout, matching Node/Python versions, and an explicit `publish` confirmation.
 - [x] Every third-party GitHub Action is pinned to a reviewed immutable commit, credentials are not persisted by checkout, and jobs use least-privilege permissions.
+- [x] The default-branch workflow identity delegates pull requests, main pushes, and manual release attempts to the same reusable CI graph, avoiding an unregistered-workflow bootstrap gap.
 - [x] Release jobs build one accepted npm archive plus Python wheel/sdist artifacts, record checksums, attest the exact bytes, and use OIDC trusted-publishing boundaries.
 - [x] Public documentation states the actual pre-release boundary and removes unsupported benchmark and security guarantees.
 - [x] The npm package checker and rollback redirect canaries execute on Windows without relying on ambient shell or symlink privileges.
