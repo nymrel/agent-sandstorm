@@ -12,6 +12,7 @@ import { CoWSnapshotManager } from '../dist/cow/index.js';
 export async function runCowTests() {
   console.log('🧪 Running CoW Engine tests...');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandstorm-cow-test-'));
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandstorm-cow-outside-'));
 
   try {
     // 1. Setup workspace with initial files
@@ -28,6 +29,7 @@ export async function runCowTests() {
     assert.strictEqual(snapshot1.fileCount, 2, 'Initial snapshot should contain 2 files');
     assert.ok(snapshot1.treeHash, 'Snapshot should have non-empty Merkle tree hash');
     assert.ok(snapshot1.id.startsWith('snap_'), 'Snapshot ID format valid');
+    assert.strictEqual(cow.getSnapshot('../../outside'), null, 'Snapshot IDs must not permit path traversal');
     console.log('  ✓ Snapshot creation & Merkle tree calculation passed');
 
     // Test 2: File mutations & diff
@@ -60,7 +62,32 @@ export async function runCowTests() {
 
     const postRollbackDiff = cow.diff(snapshot1.id);
     assert.strictEqual(postRollbackDiff.totalChanged, 0, 'Post-rollback diff must be 0 changes');
-    console.log('  ✓ 1-Click atomic rollback to pristine state passed');
+
+    const protectedDir = path.join(tmpDir, 'protected');
+    const protectedFile = path.join(protectedDir, 'value.txt');
+    const outsideFile = path.join(outsideDir, 'value.txt');
+    fs.mkdirSync(protectedDir);
+    fs.writeFileSync(protectedFile, 'captured\n');
+    fs.writeFileSync(outsideFile, 'outside\n');
+    const symlinkSnapshot = cow.createSnapshot('before-symlink-swap');
+    fs.rmSync(protectedDir, { recursive: true });
+    fs.symlinkSync(outsideDir, protectedDir, process.platform === 'win32' ? 'junction' : 'dir');
+    const symlinkRollback = cow.rollback(symlinkSnapshot.id);
+    assert.strictEqual(symlinkRollback.success, false, 'Rollback must refuse a symlinked parent path');
+    assert.strictEqual(fs.readFileSync(outsideFile, 'utf8'), 'outside\n', 'Rollback must not write outside the workspace');
+
+    if (process.platform === 'win32') fs.rmdirSync(protectedDir);
+    else fs.unlinkSync(protectedDir);
+    fs.mkdirSync(protectedDir);
+    fs.writeFileSync(protectedFile, 'object-original\n');
+    const objectSnapshot = cow.createSnapshot('before-object-corruption');
+    const captured = objectSnapshot.files['protected/value.txt'];
+    fs.writeFileSync(cow.objectStore.getObjectPath(captured.sha256), 'corrupted-object\n');
+    fs.writeFileSync(protectedFile, 'workspace-modified\n');
+    const corruptRollback = cow.rollback(objectSnapshot.id);
+    assert.strictEqual(corruptRollback.success, false, 'Rollback must reject a corrupted stored object');
+    assert.strictEqual(fs.readFileSync(protectedFile, 'utf8'), 'workspace-modified\n');
+    console.log('  ✓ Best-effort rollback of captured regular files passed');
 
     // Test 4: Commit transaction
     fs.writeFileSync(file1, 'console.log("COMMITTED");\n', 'utf-8');
@@ -75,5 +102,6 @@ export async function runCowTests() {
     console.log('✅ CoW Engine tests passed cleanly (4/4)\n');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 }

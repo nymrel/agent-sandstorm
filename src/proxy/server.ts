@@ -1,6 +1,6 @@
 /**
  * @file server.ts
- * @description High-performance Zero-Trust HTTP/CONNECT Proxy Server
+ * @description Cooperative HTTP/CONNECT proxy with a default-deny domain policy
  * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
@@ -20,11 +20,88 @@ export interface ProxyMetrics {
   bytesTransferred: number;
 }
 
+const DEFAULT_ALLOWED_PORTS: readonly number[] = [80, 443];
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+function connectionHeaderTokens(value: string | string[] | undefined): Set<string> {
+  const values = Array.isArray(value) ? value : [value || ''];
+  return new Set(
+    values
+      .flatMap((entry) => entry.split(','))
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function normalizeAllowedPorts(ports?: number[]): ReadonlySet<number> {
+  const source = ports ?? DEFAULT_ALLOWED_PORTS;
+  if (source.length === 0) {
+    throw new Error('Invalid allowedPorts configuration: at least one destination port is required.');
+  }
+  for (const port of source) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid allowedPorts configuration: expected integers from 1 through 65535 (received ${JSON.stringify(ports)}).`);
+    }
+  }
+  return new Set(source);
+}
+
+function parseAuthority(authority: string, defaultPort: number): { hostname: string; port: number } {
+  let hostname = authority.trim();
+  let portToken: string | undefined;
+
+  if (hostname.startsWith('[')) {
+    const close = hostname.indexOf(']');
+    if (close < 0) return { hostname: '', port: Number.NaN };
+    const remainder = hostname.slice(close + 1);
+    hostname = hostname.slice(1, close);
+    if (remainder === '') return { hostname, port: defaultPort };
+    if (!remainder.startsWith(':')) return { hostname: '', port: Number.NaN };
+    portToken = remainder.slice(1);
+  } else {
+    const firstColon = hostname.indexOf(':');
+    const lastColon = hostname.lastIndexOf(':');
+    if (firstColon !== -1) {
+      if (firstColon !== lastColon) return { hostname: '', port: Number.NaN };
+      portToken = hostname.slice(lastColon + 1);
+      hostname = hostname.slice(0, lastColon);
+    }
+  }
+
+  if (portToken === undefined) return { hostname, port: defaultPort };
+  if (!/^\d+$/.test(portToken)) return { hostname, port: Number.NaN };
+
+  const parsedPort = Number(portToken);
+  return Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535
+    ? { hostname, port: parsedPort }
+    : { hostname, port: Number.NaN };
+}
+
+function formatAuthority(hostname: string, port: number, defaultPort: number): string {
+  const host = hostname.includes(':') ? `[${hostname}]` : hostname;
+  return port === defaultPort ? host : `${host}:${port}`;
+}
+
+function formatPolicyHost(hostname: string): string {
+  return hostname.includes(':') ? `[${hostname}]` : hostname;
+}
+
 export class ZeroTrustProxy {
   private server: http.Server | null = null;
   private readonly config: ProxyConfig;
   private readonly scanner: SecretScanner;
   private readonly filter: DomainFilter;
+  private readonly allowedPorts: ReadonlySet<number>;
   private port = 0;
   private host = '127.0.0.1';
   private metrics: ProxyMetrics = {
@@ -43,6 +120,7 @@ export class ZeroTrustProxy {
     };
     this.scanner = new SecretScanner(this.config.customSecretPatterns);
     this.filter = new DomainFilter(this.config.allowedDomains, this.config.blockedDomains);
+    this.allowedPorts = normalizeAllowedPorts(this.config.allowedPorts);
   }
 
   /**
@@ -57,7 +135,7 @@ export class ZeroTrustProxy {
       });
 
       this.server.on('connect', (req, clientSocket, head) => {
-        this.handleHttpsConnect(req, clientSocket, head);
+        this.handleHttpsConnect(req, clientSocket as net.Socket, head);
       });
 
       this.server.on('error', (err) => {
@@ -89,22 +167,65 @@ export class ZeroTrustProxy {
     try {
       if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
         const parsed = new url.URL(rawUrl);
-        targetHost = parsed.host;
+        if (parsed.protocol !== 'http:') {
+          this.metrics.blockedRequests++;
+          this.sendBlockedResponse(
+            res,
+            'ERR_SANDSTORM_SCHEME_UNSUPPORTED',
+            'Plain HTTP forwarding accepts only http:// targets; HTTPS must use CONNECT.',
+            'Sandstorm Cooperative Proxy Scheme Policy',
+          );
+          return;
+        }
+        const rawAuthority = rawUrl
+          .slice(parsed.protocol.length + 2)
+          .split(/[/?#]/, 1)[0]!;
+        targetHost = rawAuthority.includes('@')
+          ? rawAuthority.slice(rawAuthority.lastIndexOf('@') + 1)
+          : rawAuthority;
         targetPath = parsed.pathname + parsed.search;
       }
     } catch {
-      // Invalid URL
-    }
-
-    // 1. Check Domain Allowlist
-    if (!this.filter.isAllowed(targetHost)) {
       this.metrics.blockedRequests++;
-      this.config.onBlockedDomain?.(targetHost, rawUrl);
-      this.sendBlockedResponse(res, `Domain '${targetHost}' is not in the Zero-Trust allowlist.`);
+      this.sendBlockedResponse(
+        res,
+        'ERR_SANDSTORM_TARGET_INVALID',
+        'The outbound target URL is malformed.',
+        'Sandstorm Cooperative Proxy Target Policy',
+      );
       return;
     }
 
-    // 2. Scan URL and Request Headers for Secret Exfiltration
+    const upstream = parseAuthority(targetHost, 80);
+
+    // 1. Check Domain Allowlist
+    if (!upstream.hostname || !this.filter.isAllowed(formatPolicyHost(upstream.hostname))) {
+      this.metrics.blockedRequests++;
+      this.config.onBlockedDomain?.(targetHost, rawUrl);
+      this.sendBlockedResponse(
+        res,
+        'ERR_SANDSTORM_DOMAIN_BLOCKED',
+        `Domain '${targetHost}' is not in the Sandstorm allowlist.`,
+        'Sandstorm Domain Allowlist',
+      );
+      return;
+    }
+
+    // 2. An allowed hostname does not authorize arbitrary service ports.
+    if (!this.isPortAllowed(upstream.port)) {
+      this.metrics.blockedRequests++;
+      this.config.onBlockedPort?.(upstream.hostname, upstream.port, rawUrl);
+      const portLabel = Number.isNaN(upstream.port) ? '(invalid)' : String(upstream.port);
+      this.sendBlockedResponse(
+        res,
+        'ERR_SANDSTORM_PORT_BLOCKED',
+        `Destination port ${portLabel} on '${upstream.hostname}' is not permitted (allowed: ${this.getAllowedPorts().join(', ')}).`,
+        'Sandstorm Destination Port Allowlist',
+      );
+      return;
+    }
+
+    // 3. Scan URL and Request Headers for Secret Exfiltration
     if (this.config.scanPayloads) {
       const urlSecrets = this.scanner.scan(rawUrl, 'url');
       if (urlSecrets.length > 0) {
@@ -112,20 +233,20 @@ export class ZeroTrustProxy {
         return;
       }
 
-      for (const [headerName, headerVal] of Object.entries(req.headers)) {
-        if (typeof headerVal === 'string') {
-          // Check Authorization and custom headers
-          const headerSecrets = this.scanner.scan(headerVal, 'header');
+      for (const headerVal of Object.values(req.headers)) {
+        const values = Array.isArray(headerVal) ? headerVal : [headerVal];
+        for (const value of values) {
+          if (typeof value !== 'string') continue;
+          const headerSecrets = this.scanner.scan(value, 'header');
           if (headerSecrets.length > 0) {
-            // Note: If domain is allowed (e.g. api.openai.com) and header is Authorization,
-            // we allow targeted authorization header to the exact allowed provider,
-            // but block cross-domain exfiltration or general secret leakage in unexpected headers.
+            this.handleSecretViolation(res, headerSecrets, targetHost);
+            return;
           }
         }
       }
     }
 
-    // 3. Read Body & Scan for Secrets
+    // 4. Read Body & Scan for Secrets
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => {
       chunks.push(chunk);
@@ -146,7 +267,7 @@ export class ZeroTrustProxy {
       }
 
       // Forward request
-      this.forwardHttpRequest(req, res, targetHost, targetPath, bodyBuffer);
+      this.forwardHttpRequest(req, res, upstream.hostname, upstream.port, targetPath, bodyBuffer);
     });
   }
 
@@ -156,13 +277,19 @@ export class ZeroTrustProxy {
   private forwardHttpRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    targetHost: string,
+    hostname: string,
+    port: number,
     targetPath: string,
     bodyBuffer: Buffer
   ): void {
-    const hostParts = targetHost.split(':');
-    const hostname = hostParts[0]!;
-    const port = hostParts[1] ? parseInt(hostParts[1], 10) : 80;
+    const connectionTokens = connectionHeaderTokens(req.headers.connection);
+    const headers: http.OutgoingHttpHeaders = {};
+    for (const [name, value] of Object.entries(req.headers)) {
+      const normalized = name.toLowerCase();
+      if (HOP_BY_HOP_HEADERS.has(normalized) || connectionTokens.has(normalized) || normalized === 'host') continue;
+      headers[name] = value;
+    }
+    headers.host = formatAuthority(hostname, port, 80);
 
     const proxyReq = http.request(
       {
@@ -170,11 +297,18 @@ export class ZeroTrustProxy {
         port,
         path: targetPath,
         method: req.method,
-        headers: req.headers,
+        headers,
       },
       (proxyRes) => {
         this.metrics.allowedRequests++;
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        const responseConnectionTokens = connectionHeaderTokens(proxyRes.headers.connection);
+        const responseHeaders: http.OutgoingHttpHeaders = {};
+        for (const [name, value] of Object.entries(proxyRes.headers)) {
+          const normalized = name.toLowerCase();
+          if (HOP_BY_HOP_HEADERS.has(normalized) || responseConnectionTokens.has(normalized)) continue;
+          responseHeaders[name] = value;
+        }
+        res.writeHead(proxyRes.statusCode || 200, responseHeaders);
         proxyRes.pipe(res);
       }
     );
@@ -200,14 +334,27 @@ export class ZeroTrustProxy {
   ): void {
     this.metrics.totalRequests++;
     const targetUrl = req.url || '';
-    const [hostname, portStr] = targetUrl.split(':');
-    const port = portStr ? parseInt(portStr, 10) : 443;
+    const { hostname, port } = parseAuthority(targetUrl, 443);
 
-    if (!hostname || !this.filter.isAllowed(hostname)) {
+    if (!hostname || !this.filter.isAllowed(formatPolicyHost(hostname))) {
       this.metrics.blockedRequests++;
       this.config.onBlockedDomain?.(hostname || 'unknown', targetUrl);
-      const msg = `HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{"error":"ERR_SANDSTORM_BLOCKED","reason":"Domain '${hostname}' is not permitted by Zero-Trust policy."}\r\n`;
-      clientSocket.write(msg);
+      clientSocket.write(this.connectBlockedMessage(
+        'ERR_SANDSTORM_DOMAIN_BLOCKED',
+        `Domain '${hostname}' is not permitted by the Sandstorm allowlist.`,
+      ));
+      clientSocket.end();
+      return;
+    }
+
+    if (!this.isPortAllowed(port)) {
+      this.metrics.blockedRequests++;
+      this.config.onBlockedPort?.(hostname, port, targetUrl);
+      const portLabel = Number.isNaN(port) ? '(invalid)' : String(port);
+      clientSocket.write(this.connectBlockedMessage(
+        'ERR_SANDSTORM_PORT_BLOCKED',
+        `Destination port ${portLabel} on '${hostname}' is not permitted (allowed: ${this.getAllowedPorts().join(', ')}).`,
+      ));
       clientSocket.end();
       return;
     }
@@ -258,13 +405,31 @@ export class ZeroTrustProxy {
     );
   }
 
-  private sendBlockedResponse(res: http.ServerResponse, reason: string): void {
+  private isPortAllowed(port: number): boolean {
+    return Number.isInteger(port) && this.allowedPorts.has(port);
+  }
+
+  public getAllowedPorts(): number[] {
+    return [...this.allowedPorts].sort((left, right) => left - right);
+  }
+
+  private connectBlockedMessage(error: string, reason: string): string {
+    const body = JSON.stringify({ error, reason });
+    return `HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`;
+  }
+
+  private sendBlockedResponse(
+    res: http.ServerResponse,
+    error: string,
+    reason: string,
+    policy: string,
+  ): void {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
-        error: 'ERR_SANDSTORM_DOMAIN_BLOCKED',
+        error,
         reason,
-        policy: 'Zero-Trust Domain Allowlist',
+        policy,
       })
     );
   }
@@ -297,6 +462,11 @@ export class ZeroTrustProxy {
     return { ...this.metrics };
   }
 
+  /** Redact recognized credentials before text is persisted or displayed. */
+  public redactForAudit(text: string): string {
+    return this.scanner.redactAll(text);
+  }
+
   /**
    * Stop the proxy server
    */
@@ -305,6 +475,7 @@ export class ZeroTrustProxy {
       if (this.server) {
         this.server.close(() => {
           this.server = null;
+          this.port = 0;
           resolve();
         });
       } else {

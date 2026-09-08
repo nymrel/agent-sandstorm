@@ -97,10 +97,13 @@ export interface ProxyConfig {
   host?: string;
   allowedDomains: string[];
   blockedDomains?: string[];
+  /** Destination ports the cooperative proxy may dial. Defaults to 80 and 443. */
+  allowedPorts?: number[];
   scanPayloads?: boolean;
   customSecretPatterns?: SecretPattern[];
   onSecretDetected?: (detection: SecretDetection) => void;
   onBlockedDomain?: (domain: string, url: string) => void;
+  onBlockedPort?: (host: string, port: number, url: string) => void;
   logRequests?: boolean;
 }
 
@@ -145,6 +148,7 @@ export interface SandstormOptions {
   workspace: string;
   allowDomains?: string[];
   blockDomains?: string[];
+  allowPorts?: number[];
   maxSpendUsd?: number;
   maxTokens?: number;
   maxSteps?: number;
@@ -163,7 +167,11 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   shell?: string | boolean;
+  /** Return a nonzero result instead of failing the enclosing sandbox run. */
+  allowNonZeroExit?: boolean;
 }
+
+export type CommandInput = string | readonly string[];
 
 export interface ExecResult {
   exitCode: number;
@@ -174,7 +182,7 @@ export interface ExecResult {
 
 export interface SandboxContext {
   workspace: string;
-  exec: (command: string, options?: ExecOptions) => Promise<ExecResult>;
+  exec: (command: CommandInput, options?: ExecOptions) => Promise<ExecResult>;
   env: Record<string, string>;
   recordTokenUsage: (model: string, promptTokens: number, completionTokens: number) => { currentSpendUsd: number; exceeded: boolean };
   recordStep: (actionName: string, detail?: string) => void;

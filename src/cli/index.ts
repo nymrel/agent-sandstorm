@@ -21,7 +21,7 @@ export async function runCli(args: string[]): Promise<number> {
   }
 
   if (command === '--version' || command === '-v' || command === 'version') {
-    console.log('@nymrel/agent-sandstorm v1.0.0');
+    console.log('@nymrel/agent-sandstorm v0.1.0');
     return 0;
   }
 
@@ -29,29 +29,37 @@ export async function runCli(args: string[]): Promise<number> {
 
   switch (command) {
     case 'run': {
-      const commandArgs = extractCommandArgs(args.slice(1));
+      const runArgs = args.slice(1);
+      const separatorIndex = runArgs.indexOf('--');
+      const optionArgs = separatorIndex === -1 ? runArgs : runArgs.slice(0, separatorIndex);
+      const commandArgs = separatorIndex === -1
+        ? extractCommandArgs(runArgs)
+        : runArgs.slice(separatorIndex + 1);
       if (commandArgs.length === 0) {
-        console.error('Error: sandstorm run requires a command to execute. Example: sandstorm run "npm test"');
+        console.error('Error: sandstorm run requires a command to execute. Example: sandstorm run -- npm test');
         return 1;
       }
 
-      const cmdToRun = commandArgs.join(' ');
-      const allowDomains = getArgValues(args, '--allow');
-      const maxSpend = parseFloat(getArgValue(args, '--max-spend') || '0') || undefined;
-      const maxTokens = parseInt(getArgValue(args, '--max-tokens') || '0', 10) || undefined;
-      const maxSteps = parseInt(getArgValue(args, '--max-steps') || '0', 10) || undefined;
-      const noRollback = args.includes('--no-rollback');
-      const jsonOutput = args.includes('--json');
-      const htmlReport = getArgValue(args, '--report');
+      const allowDomains = getArgValues(optionArgs, '--allow');
+      const maxSpend = getOptionalNumber(optionArgs, '--max-spend');
+      const maxTokens = getOptionalNumber(optionArgs, '--max-tokens', true);
+      const maxSteps = getOptionalNumber(optionArgs, '--max-steps', true);
+      const noRollback = optionArgs.includes('--no-rollback');
+      const useShell = optionArgs.includes('--shell');
+      const jsonOutput = optionArgs.includes('--json');
+      const htmlReport = getArgValue(optionArgs, '--report');
+      const runWorkspace = getArgValue(optionArgs, '--workspace') || process.cwd();
+      const commandInput = useShell ? commandArgs.join(' ') : commandArgs;
+      const displayCommand = commandArgs.map(argument => JSON.stringify(argument)).join(' ');
 
       if (!jsonOutput) {
-        console.log(`\n🛡️  SANDSTORM: Initializing Zero-Trust Sandbox in ${workspace}`);
-        console.log(`▶ Executing: "${cmdToRun}"\n`);
+        console.log(`\n🛡️  SANDSTORM: Initializing guarded command run in ${runWorkspace}`);
+        console.log(`▶ Executing: ${displayCommand}\n`);
       }
 
       const sandbox = new Sandstorm({
-        workspace,
-        allowDomains: allowDomains.length > 0 ? allowDomains : undefined,
+        workspace: runWorkspace,
+        allowDomains,
         maxSpendUsd: maxSpend,
         maxTokens,
         maxSteps,
@@ -59,7 +67,7 @@ export async function runCli(args: string[]): Promise<number> {
       });
 
       const result = await sandbox.run(async (ctx) => {
-        return await ctx.exec(cmdToRun);
+        return await ctx.exec(commandInput, { shell: useShell });
       });
 
       if (htmlReport) {
@@ -77,7 +85,10 @@ export async function runCli(args: string[]): Promise<number> {
         } else {
           console.error(`\n❌ Execution failed: ${result.error?.message}`);
           if (result.rollbackPerformed) {
-            console.log(`🔄 Automatic CoW Rollback performed: workspace restored to pristine baseline.`);
+            const rollbackMessage = result.rollbackSummary?.success
+              ? 'Best-effort rollback completed for captured files.'
+              : `Rollback attempt was incomplete: ${result.rollbackSummary?.error || 'unknown error'}`;
+            console.log(`🔄 ${rollbackMessage}`);
             console.log(`   Restored: ${result.rollbackSummary?.restoredFiles.length || 0}, Reverted: ${result.rollbackSummary?.revertedFiles.length || 0}, Deleted: ${result.rollbackSummary?.deletedFiles.length || 0}`);
           }
         }
@@ -171,14 +182,14 @@ export async function runCli(args: string[]): Promise<number> {
       const allowDomains = getArgValues(args, '--allow');
       const proxy = new ZeroTrustProxy({
         port,
-        allowedDomains: allowDomains.length > 0 ? allowDomains : ['api.openai.com', 'api.anthropic.com', 'registry.npmjs.org'],
+        allowedDomains: allowDomains,
         scanPayloads: true,
       });
 
       const info = await proxy.start(port);
-      console.log(`\n🛡️  Sandstorm Zero-Trust Outbound Proxy running on http://${info.host}:${info.port}`);
-      console.log(`   Allowed Domains: ${allowDomains.join(', ') || 'default'}`);
-      console.log(`   Secret Exfiltration Scanning: ACTIVE`);
+      console.log(`\n🛡️  Sandstorm cooperative outbound proxy running on http://${info.host}:${info.port}`);
+      console.log(`   Allowed Domains: ${allowDomains.join(', ') || '(none; default deny)'}`);
+      console.log(`   Secret scanning: inspectable plain HTTP only (HTTPS tunnels are not decrypted)`);
       console.log(`   Press Ctrl+C to stop.\n`);
 
       process.on('SIGINT', async () => {
@@ -197,11 +208,11 @@ export async function runCli(args: string[]): Promise<number> {
 
 function printHelp(): void {
   console.log(`
-🛡️  SANDSTORM - Zero-Trust Agent Sandbox & CoW Workspace Isolation Engine
-   Nymrel / JalenBuilds LLC (v1.0.0)
+🛡️  SANDSTORM - Experimental agent guardrails & best-effort workspace recovery
+   Nymrel / JalenBuilds LLC (v0.1.0)
 
 USAGE:
-  sandstorm run <command...> [options]
+  sandstorm run [options] -- <command> [args...]
   sandstorm snapshot [name]
   sandstorm rollback [snapshot-id]
   sandstorm diff
@@ -210,13 +221,13 @@ USAGE:
   sandstorm proxy [--port <port>] [--allow <domain...>]
 
 COMMANDS:
-  run          Execute a command inside the Zero-Trust Sandbox with automatic rollback on error
-  snapshot     Create an instant immutable Copy-on-Write snapshot of the workspace
-  rollback     Revert workspace instantly to the snapshot baseline (1-click restoration)
+  run          Execute a command with cooperative proxying and rollback on detected failure
+  snapshot     Create a content-addressed snapshot of selected workspace files
+  rollback     Request best-effort restoration to a captured snapshot
   diff         Inspect uncommitted file modifications, additions, and deletions
   commit       Approve current modifications and create a new baseline snapshot
   audit        View the cryptographic SHA-256 audit timeline and export HTML reports
-  proxy        Start a standalone Zero-Trust outbound network proxy with secret detection
+  proxy        Start a cooperative outbound proxy with domain filtering
 
 OPTIONS:
   --workspace <path>    Target workspace directory (default: current directory)
@@ -225,6 +236,7 @@ OPTIONS:
   --max-tokens <num>    Token rate limit ceiling
   --max-steps <num>     Maximum tool execution steps before brake
   --no-rollback         Disable automatic CoW rollback on execution error
+  --shell               Execute through the platform shell (explicitly less safe)
   --report <path>       Generate and save interactive HTML audit dashboard
   --json                Output results in JSON format
   --help, -h            Show this help message
@@ -249,9 +261,19 @@ function getArgValues(args: string[], flag: string): string[] {
   return results;
 }
 
+function getOptionalNumber(args: string[], flag: string, integer = false): number | undefined {
+  const raw = getArgValue(args, flag);
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!raw.trim() || !Number.isFinite(value) || value < 0 || (integer && !Number.isInteger(value))) {
+    throw new TypeError(`${flag} must be a nonnegative ${integer ? 'integer' : 'number'}`);
+  }
+  return value;
+}
+
 function extractCommandArgs(args: string[]): string[] {
   const flagsWithValue = new Set(['--workspace', '--allow', '--max-spend', '--max-tokens', '--max-steps', '--report', '--port', '--html']);
-  const booleanFlags = new Set(['--no-rollback', '--json', '--verify', '--help', '-h', '--version', '-v']);
+  const booleanFlags = new Set(['--no-rollback', '--shell', '--json', '--verify', '--help', '-h', '--version', '-v']);
   const result: string[] = [];
 
   for (let i = 0; i < args.length; i++) {

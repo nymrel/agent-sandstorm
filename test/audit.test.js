@@ -4,7 +4,10 @@
  */
 
 import * as assert from 'node:assert';
-import { AuditLogger, exportTimelineAscii, generateHtmlReport } from '../dist/audit/index.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { AuditLogger, AuditLogIntegrityError, exportTimelineAscii, generateHtmlReport } from '../dist/audit/index.js';
 
 export async function runAuditTests() {
   console.log('🧪 Running Audit & Cryptographic Verification tests...');
@@ -42,6 +45,15 @@ export async function runAuditTests() {
   const tamperedIntegrity = tamperedLogger.verifyIntegrity();
   assert.strictEqual(tamperedIntegrity.valid, false, 'Tampered chain must fail verification');
   assert.strictEqual(tamperedIntegrity.corruptedIndex, 1, 'Should identify exact corrupted block index');
+
+  const nestedLogger = new AuditLogger();
+  nestedLogger.recordEvent('NESTED', 'info', { context: { decision: 'allow' } });
+  nestedLogger.events[1].payload.context.decision = 'deny';
+  assert.strictEqual(
+    nestedLogger.verifyIntegrity().valid,
+    false,
+    'Nested payload tampering must be covered by the event hash',
+  );
   console.log('  ✓ Cryptographic tamper & corruption detection passed');
 
   // Test 4: ASCII Timeline Generation
@@ -58,10 +70,67 @@ export async function runAuditTests() {
     totalTokens: 5000,
     rollbackPerformed: true,
   });
-  assert.ok(html.includes('Sandstorm Security Audit'), 'HTML report must include header');
-  assert.ok(html.includes('✓ Cryptographically Verified'), 'HTML report must include verified badge');
-  assert.ok(html.includes('Parent Organization: JalenBuilds LLC'), 'HTML report must include Dual-Audience parent entity');
+  assert.ok(html.includes('Sandstorm Execution Audit'), 'HTML report must include header');
+  assert.ok(html.includes('✓ Hash Chain Intact'), 'HTML report must include integrity badge');
+  assert.ok(html.includes('Legal entity: JalenBuilds LLC'), 'HTML report must include the legal entity');
+
+  const injection = '</pre><script>globalThis.compromised=true</script>';
+  const injectionLogger = new AuditLogger();
+  injectionLogger.recordEvent('UNTRUSTED_TEXT', 'warn', { detail: injection });
+  const escapedHtml = generateHtmlReport(
+    injectionLogger.getEvents(),
+    injectionLogger.verifyIntegrity(),
+    { workspace: injection },
+  );
+  assert.ok(!escapedHtml.includes(injection), 'HTML report must not render untrusted markup');
+  assert.ok(escapedHtml.includes('&lt;script&gt;'), 'HTML report must visibly escape untrusted markup');
   console.log('  ✓ Interactive HTML dashboard generation passed');
 
-  console.log('✅ Audit & Cryptographic tests passed cleanly (5/5)\n');
+  // Test 6: Reopening a persisted log must continue the existing chain, while
+  // corrupted history must be rejected before any new event is appended.
+  const auditDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandstorm-audit-resume-'));
+  try {
+    const auditPath = path.join(auditDir, 'audit.jsonl');
+    const firstWriter = new AuditLogger({ logFilePath: auditPath });
+    firstWriter.recordEvent('FIRST_RUN', 'info', { value: 1 });
+
+    const secondWriter = new AuditLogger({ logFilePath: auditPath });
+    secondWriter.recordEvent('SECOND_RUN', 'info', { value: 2 });
+    assert.strictEqual(secondWriter.verifyIntegrity().valid, true, 'Resumed audit chain must remain intact');
+    assert.deepStrictEqual(
+      secondWriter.getEvents().map(event => event.index),
+      [0, 1, 2, 3],
+      'Resumed writer must continue event indexes',
+    );
+
+    const persisted = fs.readFileSync(auditPath, 'utf-8').trim().split('\n');
+    const tampered = JSON.parse(persisted[1]);
+    tampered.payload = { value: 999 };
+    persisted[1] = JSON.stringify(tampered);
+    fs.writeFileSync(auditPath, `${persisted.join('\n')}\n`, 'utf-8');
+
+    assert.throws(
+      () => new AuditLogger({ logFilePath: auditPath }),
+      AuditLogIntegrityError,
+      'A writer must not append to a corrupted persisted chain',
+    );
+
+    const failedWritePath = path.join(auditDir, 'failed-write.jsonl');
+    const failedWriter = new AuditLogger({ logFilePath: failedWritePath });
+    const beforeFailure = failedWriter.getEvents();
+    const hashBeforeFailure = failedWriter.getLatestHash();
+    fs.unlinkSync(failedWritePath);
+    fs.mkdirSync(failedWritePath);
+    assert.throws(
+      () => failedWriter.recordEvent('MUST_NOT_ADVANCE', 'error'),
+      'Persistence errors must be surfaced',
+    );
+    assert.strictEqual(failedWriter.getEvents().length, beforeFailure.length);
+    assert.strictEqual(failedWriter.getLatestHash(), hashBeforeFailure);
+  } finally {
+    fs.rmSync(auditDir, { recursive: true, force: true });
+  }
+  console.log('  ✓ Persisted audit chains resume safely and reject corrupted history');
+
+  console.log('✅ Audit & Cryptographic tests passed cleanly (6/6)\n');
 }

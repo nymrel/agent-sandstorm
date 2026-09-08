@@ -1,6 +1,6 @@
 /**
  * @file sandbox.ts
- * @description Master Zero-Trust Agent Execution Sandbox Orchestrator
+ * @description Experimental agent execution guardrail orchestrator
  * @author Nymrel / JalenBuilds LLC <contact@nymrel.com>
  * @license MIT
  */
@@ -17,11 +17,89 @@ import type {
   RollbackResult,
   CommitResult,
   WorkspaceDiff,
+  CommandInput,
 } from './types.js';
 import { CoWSnapshotManager } from './cow/index.js';
 import { ZeroTrustProxy } from './proxy/index.js';
 import { ExecutionLimiter } from './limiter/index.js';
 import { AuditLogger, exportTimelineAscii, exportHtmlReportToFile } from './audit/index.js';
+
+function definedProcessEnv(): Record<string, string> {
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) environment[key] = value;
+  }
+  return environment;
+}
+
+/** Parse a portable command string for the default shell-free execution path. */
+function parseCommandLine(command: string): [string, string[]] {
+  const args: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let tokenStarted = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]!;
+    const next = command[index + 1];
+
+    if (char === '\\' && next !== undefined && (next === '\\' || next === '"' || next === "'" || /\s/.test(next))) {
+      current += next;
+      tokenStarted = true;
+      index += 1;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      tokenStarted = true;
+    } else if (/\s/.test(char)) {
+      if (tokenStarted) {
+        args.push(current);
+        current = '';
+        tokenStarted = false;
+      }
+    } else {
+      current += char;
+      tokenStarted = true;
+    }
+  }
+
+  if (quote) throw new Error('Command contains an unterminated quote');
+  if (tokenStarted) args.push(current);
+  if (args.length === 0) throw new Error('Command must not be empty');
+
+  return [args[0]!, args.slice(1)];
+}
+
+function formatCommand(command: CommandInput): string {
+  if (typeof command === 'string') return command;
+  if (command.length === 0) throw new Error('Command must not be empty');
+
+  return command.map((argument) => {
+    if (typeof argument !== 'string') throw new TypeError('Command arguments must be strings');
+    return /^[a-zA-Z0-9_./:@%+=,-]+$/.test(argument) ? argument : JSON.stringify(argument);
+  }).join(' ');
+}
+
+export class CommandExecutionError extends Error {
+  public readonly command: string;
+  public readonly execution: ExecResult;
+
+  constructor(command: string, execution: ExecResult) {
+    super(`Command exited with code ${execution.exitCode}: ${command}`);
+    this.name = 'CommandExecutionError';
+    this.command = command;
+    this.execution = execution;
+  }
+}
 
 export class Sandstorm {
   public readonly workspace: string;
@@ -37,8 +115,9 @@ export class Sandstorm {
 
     this.options = {
       workspace: this.workspace,
-      allowDomains: options.allowDomains || ['api.openai.com', 'api.anthropic.com', 'registry.npmjs.org', 'pypi.org'],
+      allowDomains: options.allowDomains ?? [],
       blockDomains: options.blockDomains || [],
+      allowPorts: options.allowPorts ?? [80, 443],
       maxSpendUsd: options.maxSpendUsd ?? Infinity,
       maxTokens: options.maxTokens ?? Infinity,
       maxSteps: options.maxSteps ?? 100,
@@ -59,6 +138,7 @@ export class Sandstorm {
       initialPayload: {
         workspace: this.workspace,
         allowDomains: this.options.allowDomains,
+        allowPorts: this.options.allowPorts,
         autoRollback: this.options.autoRollbackOnError,
       },
     });
@@ -66,18 +146,29 @@ export class Sandstorm {
     this.proxy = new ZeroTrustProxy({
       allowedDomains: this.options.allowDomains,
       blockedDomains: this.options.blockDomains,
+      allowedPorts: this.options.allowPorts,
       scanPayloads: this.options.scanSecrets,
       customSecretPatterns: this.options.customSecretPatterns,
       onSecretDetected: (detection) => {
         this.audit.recordEvent('SECRET_BLOCKED', 'critical', {
-          pattern: detection.patternName,
+          pattern: this.proxy.redactForAudit(detection.patternName),
           severity: detection.severity,
           location: detection.location,
           redacted: detection.redactedText,
         });
       },
       onBlockedDomain: (domain, url) => {
-        this.audit.recordEvent('DOMAIN_BLOCKED', 'warn', { domain, url });
+        this.audit.recordEvent('DOMAIN_BLOCKED', 'warn', {
+          domain: this.proxy.redactForAudit(domain),
+          url: this.proxy.redactForAudit(url),
+        });
+      },
+      onBlockedPort: (host, port, url) => {
+        this.audit.recordEvent('PORT_BLOCKED', 'warn', {
+          host: this.proxy.redactForAudit(host),
+          port: Number.isNaN(port) ? 'invalid' : port,
+          url: this.proxy.redactForAudit(url),
+        });
       },
     });
 
@@ -86,17 +177,19 @@ export class Sandstorm {
       maxTotalTokens: this.options.maxTokens,
       maxSteps: this.options.maxSteps,
       maxDurationMs: this.options.maxDurationMs,
+      loopDetection: this.options.detectRunawayLoops,
       loopThreshold: this.options.loopThreshold,
     });
   }
 
   /**
-   * Run an autonomous agent callback inside the protected Zero-Trust sandbox
+   * Run a callback with the configured cooperative guardrails
    */
   public async run<T = unknown>(
     fn: (ctx: SandboxContext) => Promise<T>
   ): Promise<SandboxResult<T>> {
     const startTime = Date.now();
+    this.limiter.reset();
 
     // 1. Create Pristine Baseline CoW Snapshot
     const baseSnapshot = this.cow.createSnapshot('pre-execution-baseline');
@@ -107,11 +200,10 @@ export class Sandstorm {
       treeHash: baseSnapshot.treeHash,
     });
 
-    // 2. Start Zero-Trust Outbound Proxy
-    const proxyInfo = await this.proxy.start();
+    // 2. Start the cooperative outbound proxy
+    await this.proxy.start();
     const proxyEnv = this.proxy.getEnv();
 
-    this.limiter.start();
     let resultValue: T | undefined;
     let executionError: Error | undefined;
     let rollbackPerformed = false;
@@ -119,29 +211,43 @@ export class Sandstorm {
 
     const ctx: SandboxContext = {
       workspace: this.workspace,
-      env: { ...process.env, ...proxyEnv },
-      exec: async (command: string, options: ExecOptions = {}) => {
-        this.limiter.recordStep(command.split(' ')[0] || command, command);
-        this.audit.recordEvent('EXEC_STARTED', 'info', { command });
+      env: { ...definedProcessEnv(), ...proxyEnv },
+      exec: async (command: CommandInput, options: ExecOptions = {}) => {
+        const displayCommand = formatCommand(command);
+        const actionName = typeof command === 'string' ? command.trim().split(/\s+/, 1)[0] : command[0];
+        if (!actionName) throw new Error('Command must not be empty');
+        this.limiter.recordStep(actionName, displayCommand);
+        const redactedCommand = this.proxy.redactForAudit(displayCommand);
+        this.audit.recordEvent('EXEC_STARTED', 'info', { command: redactedCommand });
 
         const execRes = await this.execCommandInternal(command, {
-          cwd: this.workspace,
-          env: { ...proxyEnv, ...options.env },
           ...options,
+          cwd: options.cwd ?? this.workspace,
+          // A caller may add variables, but must not silently replace the
+          // proxy variables that define the guarded child-process boundary.
+          env: { ...options.env, ...proxyEnv },
         });
 
         this.audit.recordEvent('EXEC_FINISHED', execRes.exitCode === 0 ? 'info' : 'warn', {
-          command,
+          command: redactedCommand,
           exitCode: execRes.exitCode,
           durationMs: execRes.durationMs,
         });
+
+        if (execRes.exitCode !== 0 && !options.allowNonZeroExit) {
+          throw new CommandExecutionError(redactedCommand, {
+            ...execRes,
+            stdout: this.proxy.redactForAudit(execRes.stdout),
+            stderr: this.proxy.redactForAudit(execRes.stderr),
+          });
+        }
 
         return execRes;
       },
       recordTokenUsage: (model: string, promptTokens: number, completionTokens: number) => {
         const usage = this.limiter.recordTokens(model, promptTokens, completionTokens);
         this.audit.recordEvent('BUDGET_ACCUMULATED', 'info', {
-          model,
+          model: this.proxy.redactForAudit(model),
           promptTokens,
           completionTokens,
           spendUsd: usage.currentSpendUsd,
@@ -151,7 +257,10 @@ export class Sandstorm {
       },
       recordStep: (actionName: string, detail?: string) => {
         this.limiter.recordStep(actionName, detail);
-        this.audit.recordEvent('STEP_EXECUTED', 'info', { actionName, detail });
+        this.audit.recordEvent('STEP_EXECUTED', 'info', {
+          actionName: this.proxy.redactForAudit(actionName),
+          detail: detail === undefined ? undefined : this.proxy.redactForAudit(detail),
+        });
       },
       snapshot: (name?: string) => {
         const snap = this.cow.createSnapshot(name);
@@ -180,8 +289,8 @@ export class Sandstorm {
     } catch (err: unknown) {
       executionError = err instanceof Error ? err : new Error(String(err));
       this.audit.recordEvent('CIRCUIT_BREAKER_TRIPPED', 'critical', {
-        error: executionError.message,
-        stack: executionError.stack,
+        error: this.proxy.redactForAudit(executionError.message),
+        stack: executionError.stack === undefined ? undefined : this.proxy.redactForAudit(executionError.stack),
       });
 
       if (this.options.autoRollbackOnError) {
@@ -189,20 +298,22 @@ export class Sandstorm {
         rollbackPerformed = true;
         this.audit.recordEvent('ROLLBACK_TRIGGERED', 'warn', {
           snapshotId: baseSnapshot.id,
+          success: rollbackSummary.success,
           restored: rollbackSummary.restoredFiles.length,
           deleted: rollbackSummary.deletedFiles.length,
           reverted: rollbackSummary.revertedFiles.length,
           durationMs: rollbackSummary.durationMs,
+          error: rollbackSummary.error,
         });
       }
     } finally {
       await this.proxy.stop();
     }
 
-    const currentDiff = this.cow.diff(baseSnapshot.id);
     const spendSummary = this.limiter.getSummary();
     const auditVerified = this.audit.verifyIntegrity();
     const durationMs = Date.now() - startTime;
+    const finalTreeHash = this.cow.createSnapshot('final-state').treeHash;
 
     return {
       success: !executionError,
@@ -211,7 +322,7 @@ export class Sandstorm {
       rollbackPerformed,
       rollbackSummary,
       baseSnapshot,
-      finalTreeHash: rollbackPerformed ? baseSnapshot.treeHash : this.cow.createSnapshot('final-state').treeHash,
+      finalTreeHash,
       auditSummary: {
         eventCount: this.audit.getEvents().length,
         verified: auditVerified.valid,
@@ -229,21 +340,36 @@ export class Sandstorm {
   /**
    * Helper to execute a command with sandboxed environment variables
    */
-  public async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
+  public async exec(command: CommandInput, options: ExecOptions = {}): Promise<ExecResult> {
     return this.execCommandInternal(command, {
       cwd: this.workspace,
       ...options,
     });
   }
 
-  private execCommandInternal(command: string, options: ExecOptions = {}): Promise<ExecResult> {
+  private execCommandInternal(command: CommandInput, options: ExecOptions = {}): Promise<ExecResult> {
     return new Promise((resolve) => {
       const startTime = Date.now();
-      const child = spawn(command, {
+      const spawnOptions = {
         cwd: options.cwd || this.workspace,
         env: { ...process.env, ...options.env },
-        shell: options.shell ?? true,
-      });
+      };
+      const shell = options.shell ?? false;
+      if (shell && typeof command !== 'string') {
+        throw new TypeError('Shell execution requires a command string');
+      }
+      const [executable, args] = typeof command === 'string'
+        ? parseCommandLine(command)
+        : (() => {
+            if (command.length === 0) throw new Error('Command must not be empty');
+            if (command.some((argument) => typeof argument !== 'string')) {
+              throw new TypeError('Command arguments must be strings');
+            }
+            return [command[0]!, [...command.slice(1)]] as [string, string[]];
+          })();
+      const child = shell
+        ? spawn(command as string, { ...spawnOptions, shell })
+        : spawn(executable, args, { ...spawnOptions, shell: false });
 
       let stdout = '';
       let stderr = '';
@@ -267,7 +393,9 @@ export class Sandstorm {
       child.on('close', (exitCode) => {
         if (timer) clearTimeout(timer);
         resolve({
-          exitCode: exitCode ?? 0,
+          // A process closed by a signal has no numeric exit code. Treat that
+          // as failure; mapping null to zero would incorrectly report success.
+          exitCode: exitCode ?? 1,
           stdout,
           stderr,
           durationMs: Date.now() - startTime,

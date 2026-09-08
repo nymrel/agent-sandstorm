@@ -5,11 +5,12 @@ MIT License
 """
 
 import os
-import sys
 import json
 import time
 import shutil
 import hashlib
+import re
+import stat
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Set, Any
 
@@ -31,6 +32,23 @@ DEFAULT_IGNORED_FILES = {
     ".DS_Store",
     "Thumbs.db",
 }
+
+
+def _is_path_redirect(path: str) -> bool:
+    """Return True for symlinks and Windows directory junctions."""
+    if os.path.islink(path):
+        return True
+    is_junction = getattr(os.path, "isjunction", None)
+    if is_junction and is_junction(path):
+        return True
+    if os.name == "nt":
+        try:
+            attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+            reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            return bool(attributes & reparse_flag)
+        except OSError:
+            return False
+    return False
 
 
 @dataclass
@@ -110,13 +128,21 @@ def scan_workspace(
 
     for root, dirs, filenames in os.walk(workspace_root):
         # Filter directories in-place
-        dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith(".sandstorm")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in ignored_dirs
+            and not d.startswith(".sandstorm")
+            and not _is_path_redirect(os.path.join(root, d))
+        ]
 
         for fname in filenames:
             if fname in ignored_files:
                 continue
 
             full_path = os.path.join(root, fname)
+            if _is_path_redirect(full_path):
+                continue
             rel_path = os.path.relpath(full_path, workspace_root).replace("\\", "/")
 
             try:
@@ -142,6 +168,8 @@ class ObjectStore:
         os.makedirs(self.store_root, exist_ok=True)
 
     def get_object_path(self, sha256: str) -> str:
+        if not isinstance(sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", sha256):
+            raise ValueError("Object identifiers must be lowercase SHA-256 digests")
         prefix = sha256[:2]
         return os.path.join(self.store_root, prefix, sha256)
 
@@ -156,7 +184,32 @@ class ObjectStore:
         if not os.path.exists(dest):
             raise FileNotFoundError(f"Object not found in store: {sha256}")
         with open(dest, "rb") as f:
-            return f.read()
+            content = f.read()
+        if hashlib.sha256(content).hexdigest() != sha256:
+            raise ValueError(f"Object failed SHA-256 verification: {sha256}")
+        return content
+
+
+def _assert_safe_restore_target(workspace_root: str, target_path: str) -> None:
+    resolved_root = os.path.abspath(workspace_root)
+    resolved_target = os.path.abspath(target_path)
+    try:
+        if os.path.commonpath([resolved_root, resolved_target]) != resolved_root:
+            raise ValueError(f"Refusing unsafe rollback target outside the workspace: {target_path}")
+    except ValueError as error:
+        raise ValueError(f"Refusing unsafe rollback target: {target_path}") from error
+
+    relative = os.path.relpath(resolved_target, resolved_root)
+    if relative in ("", "."):
+        raise ValueError(f"Refusing rollback target at workspace root: {target_path}")
+
+    current = resolved_root
+    for part in relative.split(os.sep):
+        current = os.path.join(current, part)
+        if os.path.lexists(current) and _is_path_redirect(current):
+            raise ValueError(
+                f"Refusing rollback through symbolic link: {os.path.relpath(current, resolved_root)}"
+            )
 
 
 class CoWSnapshotManager:
@@ -222,6 +275,9 @@ class CoWSnapshotManager:
                     return self.get_snapshot(curr.get("id"))
                 except Exception:
                     return None
+            return None
+
+        if not isinstance(snap_id, str) or not re.fullmatch(r"snap_[a-zA-Z0-9_-]+", snap_id):
             return None
 
         snap_path = os.path.join(self.snapshots_dir, f"{snap_id}.json")
@@ -314,6 +370,7 @@ class CoWSnapshotManager:
 
                 if cur is None:
                     # Deleted file: restore
+                    _assert_safe_restore_target(self.workspace_root, target_path)
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     content = self.object_store.get_file_content(base_f["sha256"])
                     with open(target_path, "wb") as f:
@@ -321,6 +378,7 @@ class CoWSnapshotManager:
                     restored_files.append(rel)
                 elif cur.sha256 != base_f["sha256"]:
                     # Modified file: revert
+                    _assert_safe_restore_target(self.workspace_root, target_path)
                     content = self.object_store.get_file_content(base_f["sha256"])
                     with open(target_path, "wb") as f:
                         f.write(content)
@@ -363,7 +421,9 @@ class CoWSnapshotManager:
                 is_empty = False
                 continue
             full_path = os.path.join(dir_path, entry)
-            if os.path.isdir(full_path):
+            if _is_path_redirect(full_path):
+                is_empty = False
+            elif os.path.isdir(full_path):
                 child_empty = self._cleanup_empty_dirs(full_path, False)
                 if child_empty:
                     try:

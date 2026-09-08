@@ -1,7 +1,8 @@
 {
   "name": "@nymrel/agent-sandstorm",
-  "version": "1.0.0",
-  "description": "Zero-Trust Agent Execution Sandbox & Copy-on-Write Workspace Isolation Engine (Node.js/TypeScript + Python)",
+  "version": "0.1.0",
+  "packageManager": "npm@11.19.1",
+  "description": "Experimental agent execution guardrails, workspace recovery, cooperative proxying, and audit utilities",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -43,14 +44,29 @@
   },
   "scripts": {
     "build": "node ./scripts/build.js",
-    "test": "node test/runner.js",
-    "test:node": "node test/runner.js",
-    "test:python": "python -m unittest discover -s python/tests",
-    "prepublishOnly": "npm run build && npm test"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:node",
+    "test:node": "npm run build && node test/runner.js && npm run test:build-contract",
+    "test:build-contract": "node --test test/build-contract.test.js",
+    "test:python": "python scripts/test_python.py",
+    "check": "npm run test:node && npm run test:python && npm run check:package",
+    "check:package": "npm run build && node scripts/check-package.mjs",
+    "audit:ci": "npm audit --audit-level=high",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
   },
+  "files": [
+    "bin/sandstorm.js",
+    "dist/",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "RELEASE_READINESS.md",
+    "SECURITY.md"
+  ],
   "keywords": [
     "agent-sandbox",
-    "zero-trust",
+    "outbound-proxy",
     "copy-on-write",
     "workspace-isolation",
     "rollback-engine",
@@ -58,8 +74,7 @@
     "spend-limiter",
     "ai-agents",
     "autonomous-agents",
-    "nymrel",
-    "jalenbuilds"
+    "nymrel"
   ],
   "author": "Nymrel <contact@nymrel.com>",
   "license": "MIT",
@@ -72,9 +87,16 @@
     "url": "https://github.com/nymrel/agent-sandstorm/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.19 <27",
+    "npm": ">=11.5 <12"
   },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "7.0.2"
+  },
+  "sideEffects": false,
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   }
 }

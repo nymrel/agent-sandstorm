@@ -26,7 +26,7 @@ export function formatEventSummary(event: AuditEvent): string {
   const p = event.payload;
   switch (event.type) {
     case 'SANDBOX_INIT':
-      return `Sandbox initialized (v${p['version'] || '1.0.0'})`;
+      return `Guardrail run initialized (v${p['version'] || '0.1.0'})`;
     case 'SNAPSHOT_CREATED':
       return `CoW Snapshot created: '${p['name'] || p['snapshotId']}' (${p['fileCount'] || 0} files, Merkle: ${String(p['treeHash'] || '').substring(0, 8)}...)`;
     case 'EXEC_STARTED':

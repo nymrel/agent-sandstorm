@@ -6,13 +6,14 @@
  */
 
 import type { LimiterConfig } from '../types.js';
-import { BudgetTracker, BudgetExceededError, DEFAULT_MODEL_PRICING } from './budget.js';
-import { LoopDetector, RunawayLoopError, StepLimitExceededError } from './loop.js';
+import { BudgetTracker } from './budget.js';
+import { LoopDetector } from './loop.js';
 
 export class ExecutionLimiter {
   public readonly budget: BudgetTracker;
   public readonly loopDetector: LoopDetector;
   private readonly maxDurationMs: number;
+  private readonly loopDetection: boolean;
   private startTime: number;
 
   constructor(config: LimiterConfig = {}) {
@@ -29,6 +30,14 @@ export class ExecutionLimiter {
     });
 
     this.maxDurationMs = config.maxDurationMs ?? Infinity;
+    if (
+      this.maxDurationMs < 0 ||
+      Number.isNaN(this.maxDurationMs) ||
+      (this.maxDurationMs !== Infinity && !Number.isFinite(this.maxDurationMs))
+    ) {
+      throw new RangeError('maxDurationMs must be a nonnegative number or Infinity');
+    }
+    this.loopDetection = config.loopDetection ?? true;
     this.startTime = Date.now();
   }
 
@@ -54,7 +63,7 @@ export class ExecutionLimiter {
    */
   public recordStep(actionName: string, detail?: string): void {
     this.checkTimeout();
-    this.loopDetector.recordAction(actionName, detail);
+    this.loopDetector.recordAction(actionName, detail, this.loopDetection);
   }
 
   /**

@@ -44,7 +44,7 @@ export class CoWSnapshotManager {
   }
 
   /**
-   * Create a new immutable snapshot of the workspace
+   * Create a content-addressed snapshot of selected workspace files
    */
   public createSnapshot(name?: string, metadata?: Record<string, unknown>): SnapshotMetadata {
     const timestamp = Date.now();
@@ -52,7 +52,7 @@ export class CoWSnapshotManager {
     const files = scanWorkspaceFiles(this.workspaceRoot);
 
     let totalSizeBytes = 0;
-    for (const [relPath, file] of Object.entries(files)) {
+    for (const file of Object.values(files)) {
       totalSizeBytes += file.size;
       this.objectStore.putFile(file.path, file.sha256);
     }
@@ -100,6 +100,10 @@ export class CoWSnapshotManager {
       return null;
     }
 
+    if (!/^snap_[a-zA-Z0-9_-]+$/.test(id)) {
+      return null;
+    }
+
     const snapshotPath = path.join(this.snapshotsDir, `${id}.json`);
     if (!fs.existsSync(snapshotPath)) {
       return null;
@@ -135,7 +139,7 @@ export class CoWSnapshotManager {
   }
 
   /**
-   * Start an atomic transaction for agent writes
+   * Start a journal entry for agent writes
    */
   public startTransaction(name = 'agent-session'): TransactionJournal {
     const baseSnapshot = this.getSnapshot() || this.createSnapshot('baseline');
@@ -154,7 +158,7 @@ export class CoWSnapshotManager {
   }
 
   /**
-   * Instant 1-click rollback to snapshot baseline
+   * Request best-effort rollback to a captured snapshot
    */
   public rollback(snapshotId?: string): RollbackResult {
     const baseSnapshot = this.getSnapshot(snapshotId);

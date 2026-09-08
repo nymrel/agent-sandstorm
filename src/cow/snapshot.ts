@@ -8,7 +8,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import type { FileSnapshot, SnapshotMetadata, WorkspaceDiff } from '../types.js';
+import type { FileSnapshot } from '../types.js';
 
 const DEFAULT_IGNORED_DIRS = new Set([
   '.git',
@@ -117,6 +117,9 @@ export class ObjectStore {
   }
 
   public getObjectPath(sha256: string): string {
+    if (!/^[a-f0-9]{64}$/.test(sha256)) {
+      throw new TypeError('Object identifiers must be lowercase SHA-256 digests');
+    }
     const prefix = sha256.substring(0, 2);
     return path.join(this.storeRoot, prefix, sha256);
   }
@@ -144,7 +147,11 @@ export class ObjectStore {
     if (!fs.existsSync(dest)) {
       throw new Error(`Object not found in store: ${sha256}`);
     }
-    return fs.readFileSync(dest);
+    const buffer = fs.readFileSync(dest);
+    if (computeBufferSha256(buffer) !== sha256) {
+      throw new Error(`Object failed SHA-256 verification: ${sha256}`);
+    }
+    return buffer;
   }
 
   public hasObject(sha256: string): boolean {

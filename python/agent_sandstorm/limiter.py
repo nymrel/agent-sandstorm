@@ -5,7 +5,7 @@ MIT License
 """
 
 import time
-from dataclasses import dataclass
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -45,6 +45,24 @@ DEFAULT_MODEL_PRICING: Dict[str, Tuple[float, float]] = {
 }
 
 
+def _validate_limit(name: str, value: float, integer: bool = False) -> float:
+    if value < 0 or math.isnan(value) or (not math.isfinite(value) and value != float("inf")):
+        raise ValueError(f"{name} must be a nonnegative number or infinity")
+    if integer and value != float("inf") and (not isinstance(value, int) or isinstance(value, bool)):
+        raise ValueError(f"{name} must be a nonnegative integer or infinity")
+    return value
+
+
+def _validate_pricing(pricing: Dict[str, Tuple[float, float]]) -> None:
+    for model, rates in pricing.items():
+        if not isinstance(model, str) or not model.strip():
+            raise TypeError("Model pricing keys must not be empty")
+        if not isinstance(rates, tuple) or len(rates) != 2:
+            raise TypeError(f"Pricing for {model} must be a (prompt, completion) tuple")
+        _validate_limit(f"Prompt price for {model}", rates[0])
+        _validate_limit(f"Completion price for {model}", rates[1])
+
+
 class BudgetTracker:
     def __init__(
         self,
@@ -52,11 +70,18 @@ class BudgetTracker:
         max_total_tokens: Optional[int] = None,
         custom_pricing: Optional[Dict[str, Tuple[float, float]]] = None,
     ):
-        self.max_spend_usd = max_spend_usd if max_spend_usd is not None else float("inf")
-        self.max_total_tokens = max_total_tokens if max_total_tokens is not None else float("inf")
+        self.max_spend_usd = _validate_limit(
+            "max_spend_usd", max_spend_usd if max_spend_usd is not None else float("inf")
+        )
+        self.max_total_tokens = _validate_limit(
+            "max_total_tokens",
+            max_total_tokens if max_total_tokens is not None else float("inf"),
+            integer=True,
+        )
         self.pricing = DEFAULT_MODEL_PRICING.copy()
         if custom_pricing:
             self.pricing.update(custom_pricing)
+        _validate_pricing(self.pricing)
 
         self.total_spend_usd = 0.0
         self.total_tokens = 0
@@ -64,6 +89,11 @@ class BudgetTracker:
         self.total_completion_tokens = 0
 
     def record_usage(self, model: str, prompt_tokens: int, completion_tokens: int) -> Dict[str, Any]:
+        if not isinstance(model, str) or not model.strip():
+            raise TypeError("model must be a nonempty string")
+        _validate_limit("prompt_tokens", prompt_tokens, integer=True)
+        _validate_limit("completion_tokens", completion_tokens, integer=True)
+
         normalized = model.lower()
         p_rate, c_rate = self.pricing.get(normalized, self.pricing["default"])
 
@@ -106,16 +136,35 @@ class BudgetTracker:
             "completion_tokens": self.total_completion_tokens,
         }
 
+    def reset(self) -> None:
+        self.total_spend_usd = 0.0
+        self.total_tokens = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+
+
+def _validate_integer_limit(name: str, value: float, minimum: int, allow_infinity: bool = False) -> float:
+    if allow_infinity and value == float("inf"):
+        return value
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
+    return value
+
 
 class LoopDetector:
     def __init__(self, max_steps: int = 100, loop_threshold: int = 3, window_size: int = 20):
-        self.max_steps = max_steps
-        self.loop_threshold = loop_threshold
-        self.window_size = window_size
+        self.max_steps = _validate_integer_limit("max_steps", max_steps, 0, allow_infinity=True)
+        self.loop_threshold = _validate_integer_limit("loop_threshold", loop_threshold, 1)
+        self.window_size = _validate_integer_limit("window_size", window_size, 1)
         self.action_history: List[str] = []
         self.total_steps = 0
 
-    def record_action(self, action_identifier: str, detail: Optional[str] = None) -> None:
+    def record_action(
+        self,
+        action_identifier: str,
+        detail: Optional[str] = None,
+        detect_loops: bool = True,
+    ) -> None:
         self.total_steps += 1
         if self.total_steps > self.max_steps:
             raise StepLimitExceededError(
@@ -130,7 +179,8 @@ class LoopDetector:
         if len(self.action_history) > self.window_size:
             self.action_history.pop(0)
 
-        self._check_loops()
+        if detect_loops:
+            self._check_loops()
 
     def _check_loops(self) -> None:
         n = len(self.action_history)
@@ -177,6 +227,10 @@ class LoopDetector:
                         self.total_steps,
                     )
 
+    def reset(self) -> None:
+        self.action_history.clear()
+        self.total_steps = 0
+
 
 class ExecutionLimiter:
     def __init__(
@@ -186,10 +240,15 @@ class ExecutionLimiter:
         max_steps: int = 100,
         max_duration_ms: Optional[float] = None,
         loop_threshold: int = 3,
+        loop_detection: bool = True,
     ):
         self.budget = BudgetTracker(max_spend_usd=max_spend_usd, max_total_tokens=max_total_tokens)
         self.loop_detector = LoopDetector(max_steps=max_steps, loop_threshold=loop_threshold)
-        self.max_duration_ms = max_duration_ms if max_duration_ms is not None else float("inf")
+        self.max_duration_ms = _validate_limit(
+            "max_duration_ms",
+            max_duration_ms if max_duration_ms is not None else float("inf"),
+        )
+        self.loop_detection = loop_detection
         self.start_time = time.time()
 
     def start(self) -> None:
@@ -202,7 +261,7 @@ class ExecutionLimiter:
 
     def record_step(self, action: str, detail: Optional[str] = None) -> None:
         self.check_timeout()
-        self.loop_detector.record_action(action, detail)
+        self.loop_detector.record_action(action, detail, detect_loops=self.loop_detection)
 
     def record_tokens(self, model: str, prompt_tokens: int, completion_tokens: int) -> Dict[str, Any]:
         self.check_timeout()
@@ -213,3 +272,8 @@ class ExecutionLimiter:
         summary["steps_executed"] = self.loop_detector.total_steps
         summary["elapsed_ms"] = (time.time() - self.start_time) * 1000.0
         return summary
+
+    def reset(self) -> None:
+        self.budget.reset()
+        self.loop_detector.reset()
+        self.start_time = time.time()
