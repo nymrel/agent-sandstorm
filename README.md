@@ -35,6 +35,7 @@ Sandstorm is a guardrail library, not containment. In particular:
 - callbacks execute in the host process and retain its filesystem, environment, and network privileges;
 - domain and destination-port proxy settings are cooperative and can be ignored or bypassed by child software;
 - HTTPS `CONNECT` tunnels are domain-filtered, but their encrypted payloads cannot be inspected by this proxy;
+- the Python HTTP forwarder rejects transfer encodings and malformed or duplicate `Content-Length` headers with HTTP 400 before reading a body or opening an upstream connection; body-size, upload-time, concurrency, and response limits remain unimplemented;
 - snapshot rollback is sequential and best-effort, not crash-atomic;
 - `.git`, `.sandstorm`, `node_modules`, `dist`, `build`, virtual environments, caches, and other configured exclusions are not restored;
 - symlinks, hard links, open files, processes, services, databases, and external side effects are outside the rollback boundary;

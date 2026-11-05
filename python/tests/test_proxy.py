@@ -43,6 +43,66 @@ class TestProxy(unittest.TestCase):
         with self.assertRaises(ValueError):
             DomainFilter(["api.openai.com$|evil.example"])
 
+    def test_invalid_request_framing_is_rejected_before_forwarding(self):
+        upstream_bodies = []
+
+        class UpstreamHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                upstream_bodies.append(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            def log_message(self, *_args):
+                return
+
+        upstream = HTTPServer(("127.0.0.1", 0), UpstreamHandler)
+        upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+        upstream_thread.start()
+        proxy = ZeroTrustProxy(allowed_domains=["127.0.0.1"], allowed_ports=[upstream.server_port])
+        proxy.start()
+
+        def request(headers, body=b""):
+            with socket.create_connection(("127.0.0.1", proxy.port), timeout=5) as connection:
+                head = (
+                    f"POST http://127.0.0.1:{upstream.server_port}/ HTTP/1.1\r\n"
+                    f"Host: 127.0.0.1:{upstream.server_port}\r\n{headers}\r\n\r\n"
+                )
+                connection.sendall(head.encode("ascii") + body)
+                connection.shutdown(socket.SHUT_WR)
+                chunks = []
+                while chunk := connection.recv(4096):
+                    chunks.append(chunk)
+                return b"".join(chunks)
+
+        try:
+            for headers in (
+                "Content-Length: nope",
+                "Content-Length: -1",
+                "Content-Length: +0",
+                "Content-Length: 0, 0",
+                "Content-Length: 0\r\nContent-Length: 0",
+                "Transfer-Encoding: chunked",
+                "Transfer-Encoding: chunked\r\nContent-Length: 0",
+            ):
+                with self.subTest(headers=headers):
+                    response = request(headers)
+                    self.assertIn(b"400 Bad Request", response)
+                    self.assertIn(b"ERR_SANDSTORM_REQUEST_FRAMING_INVALID", response)
+                    self.assertIn(b"Connection: close", response)
+                    self.assertEqual(upstream_bodies, [])
+
+            self.assertIn(b"200 OK", request("Content-Length: 7", b"payload"))
+            self.assertEqual(upstream_bodies, [b"payload"])
+            self.assertIn(b"200 OK", request("Content-Length: 0"))
+            self.assertEqual(upstream_bodies, [b"payload", b""])
+        finally:
+            proxy.stop()
+            upstream.shutdown()
+            upstream.server_close()
+            upstream_thread.join(timeout=1)
+
     def test_plain_http_forwarding_and_header_secret_blocking(self):
         class UpstreamHandler(BaseHTTPRequestHandler):
             def do_GET(self):
