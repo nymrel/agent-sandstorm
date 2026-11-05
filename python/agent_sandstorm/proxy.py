@@ -359,8 +359,23 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
                     self._block_secret(header_secrets[0], target_authority)
                     return
 
-        # Read body if present
-        content_length = int(self.headers.get("Content-Length", 0))
+        # This forwarder does not decode transfer codings. Reject ambiguous or
+        # invalid framing before reading a body or opening an upstream socket.
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) > 1:
+            self._reject_request_framing()
+            return
+        length_text = lengths[0].strip() if lengths else "0"
+        if not re.fullmatch(r"[0-9]+", length_text):
+            self._reject_request_framing()
+            return
+        try:
+            content_length = int(length_text)
+        except ValueError:
+            self._reject_request_framing()
+            return
+
+        # Read body if present. Size and upload deadlines remain separate limits.
         body = self.rfile.read(content_length) if content_length > 0 else b""
 
         if self.server.scan_payloads and body:
@@ -421,6 +436,16 @@ class ProxyRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"error":"ERR_SANDSTORM_BAD_GATEWAY"}\n')
         finally:
             connection.close()
+
+    def _reject_request_framing(self):
+        body = b'{"error":"ERR_SANDSTORM_REQUEST_FRAMING_INVALID"}\n'
+        self.close_connection = True
+        self.send_response(400, "Bad Request")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _block_secret(self, detection: SecretDetection, target_host: str):
         if self.server.on_secret_detected:
