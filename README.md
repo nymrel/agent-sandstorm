@@ -9,7 +9,14 @@ Experimental workspace recovery, outbound-domain filtering, execution limits, an
 [![PyPI status](https://img.shields.io/badge/PyPI-not%20published-lightgrey.svg)](https://pypi.org/project/agent-sandstorm/)
 [![license](https://img.shields.io/badge/license-MIT-orange.svg)](./LICENSE)
 [![zero-dependencies](https://img.shields.io/badge/dependencies-0%20(pure%20native)-brightgreen.svg)]()
-[![dual-audience](https://img.shields.io/badge/Nymrel-Dual--Audience%20Verified-gold.svg)](./llms.txt)
+
+## Choose a starting point
+
+| Your goal | Start here | Completion and recovery |
+| --- | --- | --- |
+| Understand the protection before using it | Read the [security boundary](#security-boundary). | No terminal step is needed to assess fit. This is a developer toolkit, with no hosted app, and it cannot contain untrusted code. Ask an [adoption question](https://github.com/nymrel/agent-sandstorm/issues) without including private workspace data. |
+| Integrate workspace recovery | Follow [source setup](#evaluate-from-source) and the [SDK example](#-quickstart) in a disposable workspace. | Verify the command outcome and the resulting files. A rollback request is best-effort; inspect its result before retrying work. |
+| Use it from an agent runtime | Use the [CLI](#cli) or SDK from an already authorized runtime; inspect `node bin/sandstorm.js --help` after building. | There is no MCP server here. Keep the caller's existing command permissions and isolation. Neither a proxy allowlist nor an audit hash grants permission or proves containment. |
 
 ## Current scope
 
